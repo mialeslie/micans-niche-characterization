@@ -1,0 +1,1063 @@
+---
+title: Amastra micans Niche Characterization
+date: "`r Sys.Date()`"
+author: Chandra Earl / Mia Leslie
+output: (function(...) {
+  rmdformats::robobook(toc_depth = 4, pandoc_args = c("+RTS", "-K2000m", "-RTS"), ...) })
+editor_options: 
+  chunk_output_type: console
+knit: (function(inputFile, encoding) {
+  rmarkdown::render(inputFile, encoding = encoding, output_dir = "docs") })  
+---
+  
+ 
+# Load Libraries
+
+```{r}
+setwd("C:/Users/Chandra Earl/Desktop/Labs/Yeung_Hayes/Stuff/For_Others/For_Mia")
+project_crs <- "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs"
+project_res <- c(0.00225, 0.00225)
+
+library(hypervolume)
+library(sf)
+library(terra)
+library(raster)
+library(RColorBrewer)
+library(dplyr)
+library(ggplot2)
+library(cowplot)
+
+#distinctive colors for mapping
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector_random = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+col_vector_ordered <- colorRampPalette(c('blue', 'red'))
+```
+
+# Import Data
+
+## Import Snail data
+```{r}
+#filenames
+input_micans_filename <- "Data/Snail_data/micans.csv"
+input_exclosures_filename <- "Data/Snail_data/oahu_exclosures.csv"
+
+# Load the input data
+snail_data <- read.csv(input_micans_filename, header = TRUE)
+exclosure_data <- read.csv(input_exclosures_filename, header = TRUE)
+
+#convert to sf object
+snail_data_sf <- st_as_sf(snail_data, coords = c("decimalLongitude", "decimalLatitude"), crs = project_crs)
+exclosure_data_sf <- st_as_sf(exclosure_data, coords = c("decimalLongitude", "decimalLatitude"), crs = project_crs)
+```
+
+
+## Import Environmental Data
+
+### Oahu Shapefile
+```{r}
+#Oahu shapefile
+hawaii_shp <- vect(x = "Data/HI_shapefile/HI.shp") %>% st_as_sf()
+hawaii_shp <- st_transform(hawaii_shp, crs = project_crs)
+hawaii_shp_cast <- st_cast(hawaii_shp, "POLYGON")
+oahu_shp <- st_as_sf(hawaii_shp_cast$geometry[28])
+plot(oahu_shp)
+#Create an NAD83 shapefile for later
+oahu_shp_nad83 <- st_transform(oahu_shp, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
+oahu_shp_utm4N <- st_transform(oahu_shp, "+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
+
+```
+
+### Actual Evapotranspiration (mm)
+```{r}
+actual_evapotranspiration <- raster("Data/Environmental_data/Actual Evapotranspiration (mm)/AET_mm_month_raster/aet_mm_ann/prj.adf")
+#actual_evapotranspiration <- projectRaster(actual_evapotranspiration, crs = project_crs)
+actual_evapotranspiration_oahu <- mask(actual_evapotranspiration, oahu_shp)
+actual_evapotranspiration_oahu <- crop(actual_evapotranspiration_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/actual_evapotranspiration_oahu.png")
+plot(actual_evapotranspiration_oahu)
+title("Actual Evapotranspiration (mm)")
+dev.off()
+```
+
+### Annual Rainfall MM GIS - don't use, use bioclim instead
+```{r eval=FALSE}
+#annual_rainfall <- vect("Data/Environmental_data/Annual Rainfall MM GIS/Annual_Rainfall_(mm)/Annual_Rainfall_(mm).shp")
+#annual_rainfall <- projectRaster(annual_rainfall, crs = project_crs)
+#annual_rainfall_oahu <- mask(annual_rainfall, oahu_shp)
+#annual_rainfall_oahu <- crop(annual_rainfall, oahu_shp)
+#plot(annual_rainfall_oahu)
+#title("Annual Rainfall MM GIS")
+```
+
+### Available Soil Moisture
+```{r}
+available_soil_moisture <- raster("Data/Environmental_data/Available Soil Moisture/SoilMoisture_month_raster/sl_mst_ann/prj.adf")
+#available_soil_moisture <- projectRaster(available_soil_moisture, crs = project_crs)
+available_soil_moisture_oahu <- mask(available_soil_moisture, oahu_shp)
+available_soil_moisture_oahu <- crop(available_soil_moisture_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/available_soil_moisture_oahu.png")
+plot(available_soil_moisture_oahu)
+title("Available Soil Moisture")
+dev.off()
+```
+
+### Bioclim Variables
+1	Annual mean temperature
+2	Mean diurnal range (Mean of monthly max temperature - min temperature) (how much temperature changes during the day)
+3	Isothermality (Mean diurnal range/ temperature annual range) (how predictable are temperature swings)
+4	Temperature seasonality (Standard deviation of monthly mean temperature)
+5	Max temperature of warmest month
+6	Min temperature of coldest month
+7	Temperature annual range (Max temperature of warmest month - min temperature of coldest month)
+8	Mean temperature of wettest quarter
+9	Mean temperature of driest quarter
+10	Mean temperature of warmest quarter
+11	Mean temperature of coldest quarter
+12	Annual precipitation
+13	Precipitation of wettest month - don't use
+14	Precipitation of driest month - don't use
+15	Precipitation seasonality (Coefficient of variation for monthly precipitation)
+16	Precipitation of wettest quarter
+17	Precipitation of driest quarter
+18	Precipitation of warmest quarter
+19	Precipitation of coldest quarter
+```{r}
+bioclim_variables <- stack("Data/Environmental_data/Bioclim Variables/baseline_bioclims.tif")
+bioclim_variables <- mask(bioclim_variables, oahu_shp)
+bioclim_variables <- crop(bioclim_variables, oahu_shp)
+annual_mean_temperature <- bioclim_variables$baseline_bioclims_1
+mean_diurnal_range <- bioclim_variables$baseline_bioclims_2
+isothermality <- bioclim_variables$baseline_bioclims_3
+temperature_seasonality <- bioclim_variables$baseline_bioclims_4
+max_temperature <- bioclim_variables$baseline_bioclims_5
+min_temperature <- bioclim_variables$baseline_bioclims_6
+annual_temperature_range <- bioclim_variables$baseline_bioclims_7
+temperature_wet <- bioclim_variables$baseline_bioclims_8
+temperature_dry <- bioclim_variables$baseline_bioclims_9
+temperature_warm <- bioclim_variables$baseline_bioclims_10
+temperature_cold <- bioclim_variables$baseline_bioclims_11
+precipitation <- bioclim_variables$baseline_bioclims_12
+precipitation_wet <- bioclim_variables$baseline_bioclims_16
+precipitation_dry <- bioclim_variables$baseline_bioclims_17
+precipitation_seasonality <- bioclim_variables$baseline_bioclims_15
+precipitation_warm <- bioclim_variables$baseline_bioclims_18
+precipitation_cold <- bioclim_variables$baseline_bioclims_19
+
+png(filename="Outputs/Env_output_plots/annual_mean_temperature.png")
+plot(annual_mean_temperature)
+title("Annual Mean Temperature")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/mean_diurnal_range.png")
+plot(mean_diurnal_range)
+title("Mean Diurnal Range")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/isothermality.png")
+plot(isothermality)
+title("Isothermality")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/temperature_seasonality.png")
+plot(temperature_seasonality)
+title("Temperature Seasonality")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/max_temperature.png")
+plot(max_temperature)
+title("Max Temperature")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/min_temperature.png")
+plot(min_temperature)
+title("Minimum Temperature")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/annual_temperature_range.png")
+plot(annual_temperature_range)
+title("Annual Temperature Range")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/temperature_wet.png")
+plot(temperature_wet)
+title("Mean Temperature of Wettest Quarter")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/temperature_dry.png")
+plot(temperature_dry)
+title("Mean Temperature of Driest Quarter")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/temperature_warm.png")
+plot(temperature_warm)
+title("Mean Temperature of Warmest Quarter")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/temperature_cold.png")
+plot(temperature_cold)
+title("Mean Temperature of Coldest Quarter")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/precipitation.png")
+plot(precipitation)
+title("Annual Precipitation")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/precipitation_wet.png")
+plot(precipitation_wet)
+title("Precipitation of Wettest Quarter")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/precipitation_dry.png")
+plot(precipitation_dry)
+title("Precipitation of Driest Quarter")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/precipitation_seasonality.png")
+plot(precipitation_seasonality)
+title("Precipitation Seasonality")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/precipitation_warm.png")
+plot(precipitation_warm)
+title("Precipitation of Warmest Quarter")
+dev.off()
+
+png(filename="Outputs/Env_output_plots/precipitation_cold.png")
+plot(precipitation_cold)
+title("Precipitation of Coldest Quarter")
+dev.off()
+
+```
+
+### Canopy Wetness Fraction
+```{r}
+canopy_wetness_fraction <- raster("Data/Environmental_data/Canopy Wetness Fraction/FractionalCanopyWetness_month_raster/fr_c_w_ann/prj.adf")
+#canopy_wetness_fraction <- projectRaster(canopy_wetness_fraction, crs = project_crs)
+canopy_wetness_fraction_oahu <- mask(canopy_wetness_fraction, oahu_shp)
+canopy_wetness_fraction_oahu <- crop(canopy_wetness_fraction_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/canopy_wetness_fraction_oahu.png")
+plot(canopy_wetness_fraction_oahu)
+title("Canopy Wetness Fraction")
+dev.off()
+```
+
+### Cloud Frequency
+```{r}
+cloud_frequency <- raster("Data/Environmental_data/Cloud Frequency/CloudFreq_month_raster/cl_frq_ann/prj.adf")
+#cloud_frequency <- projectRaster(cloud_frequency, crs = project_crs)
+cloud_frequency_oahu <- mask(cloud_frequency, oahu_shp)
+cloud_frequency_oahu <- crop(cloud_frequency_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/cloud_frequency_oahu.png")
+plot(cloud_frequency_oahu)
+title("Cloud Frequency")
+dev.off()
+```
+
+### Cloud Free Satellite - don't use
+```{r eval=FALSE}
+```
+
+### Elevation
+```{r}
+if (!file.exists("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.Rdata")){
+  elevation <- raster("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.tif")
+  elevation_oahu <- crop(elevation, oahu_shp_nad83)
+  elevation_oahu <- mask(elevation_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  elevation_oahu <- projectRaster(elevation_oahu, cloud_frequency_oahu)
+  save(elevation_oahu, file = "Data/Environmental_data/Elevation/Tif/LH20_Elev_220.Rdata")
+  rm(elevation)
+  gc()
+} else {
+  load("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/elevation_oahu.png")
+plot(elevation_oahu)
+title("Elevation")
+dev.off()
+```
+
+### Existing Vegetation Cover 2022
+```{r}
+if (!file.exists("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.Rdata")){
+  existing_vegetation_cover <- raster("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.tif")
+  existing_vegetation_cover_oahu <- crop(existing_vegetation_cover, oahu_shp_nad83)
+  existing_vegetation_cover_oahu <- mask(existing_vegetation_cover_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  existing_vegetation_cover_oahu <- projectRaster(existing_vegetation_cover_oahu, cloud_frequency_oahu)
+  save(existing_vegetation_cover_oahu, file = "Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.Rdata")
+  rm(existing_vegetation_cover)
+  gc()
+} else {
+  load("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/existing_vegetation_cover_oahu.png")
+plot(existing_vegetation_cover_oahu)
+title("Existing Vegetation Cover")
+dev.off()
+```
+
+### Existing Vegetation Height 2022
+```{r}
+if (!file.exists("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.Rdata")){
+  existing_vegetation_height <- raster("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.tif")
+  existing_vegetation_height_oahu <- crop(existing_vegetation_height, oahu_shp_nad83)
+  existing_vegetation_height_oahu <- mask(existing_vegetation_height_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  existing_vegetation_height_oahu <- projectRaster(existing_vegetation_height_oahu, cloud_frequency_oahu)
+  save(existing_vegetation_height_oahu, file = "Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.Rdata")
+  rm(existing_vegetation_height)
+  gc()
+} else {
+  load("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/existing_vegetation_height_oahu.png")
+plot(existing_vegetation_height_oahu)
+title("Existing Vegetation Height")
+dev.off()
+```
+
+### Existing Vegetation Type 2022
+```{r}
+#Existing Vegetation Type 2022
+if (!file.exists("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.Rdata")){
+  existing_vegetation_type <- raster("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.tif")
+  existing_vegetation_type_oahu <- crop(existing_vegetation_type, oahu_shp_nad83)
+  existing_vegetation_type_oahu <- mask(existing_vegetation_type_oahu, oahu_shp_nad83)
+  levels <- levels(existing_vegetation_type_oahu)[[1]][c(1, 2)]
+  #this takes a while to run
+  existing_vegetation_type_oahu <- projectRaster(existing_vegetation_type_oahu, cloud_frequency_oahu)
+  save(existing_vegetation_type_oahu, file = "Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.Rdata")
+  save(levels, file = "Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220_levels.Rdata")
+  rm(existing_vegetation_type)
+  gc()
+} else {
+  load("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.Rdata")
+  load(file = "Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220_levels.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/existing_vegetation_type_oahu.png")
+plot(existing_vegetation_type_oahu)
+title("Existing Vegetation Type")
+dev.off()
+```
+
+### Fog Cover
+```{r}
+fog_cover <- raster("Data/Environmental_data/Fog Cover/MAP_1920_1969_eff_250.tif")
+#fog_cover <- projectRaster(fog_cover, crs = project_crs)
+fog_cover_oahu <- mask(fog_cover, oahu_shp)
+fog_cover_oahu <- crop(fog_cover_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/fog_cover_oahu.png")
+plot(fog_cover_oahu)
+title("Fog Cover")
+dev.off()
+```
+
+### Forest Canopy Base Height 2022
+```{r}
+if (!file.exists("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.Rdata")){
+  forest_canopy_base_height <- raster("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.tif")
+  forest_canopy_base_height_oahu <- crop(forest_canopy_base_height, oahu_shp_nad83)
+  forest_canopy_base_height_oahu <- mask(forest_canopy_base_height_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  forest_canopy_base_height_oahu <- projectRaster(forest_canopy_base_height_oahu, cloud_frequency_oahu)
+  save(forest_canopy_base_height_oahu, file = "Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.Rdata")
+  rm(forest_canopy_base_height)
+  gc()
+} else {
+  load("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/forest_canopy_base_height_oahu.png")
+plot(forest_canopy_base_height_oahu)
+title("Forest Canopy Base Height")
+dev.off()
+```
+
+### Forest Canopy Bulk Density 2022
+```{r}
+if (!file.exists("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.Rdata")){
+  forest_canopy_bulk_density <- raster("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.tif")
+  forest_canopy_bulk_density_oahu <- crop(forest_canopy_bulk_density, oahu_shp_nad83)
+  forest_canopy_bulk_density_oahu <- mask(forest_canopy_bulk_density_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  forest_canopy_bulk_density_oahu <- projectRaster(forest_canopy_bulk_density_oahu, cloud_frequency_oahu)
+  save(forest_canopy_bulk_density_oahu, file = "Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.Rdata")
+  rm(forest_canopy_bulk_density)
+  gc()
+} else {
+  load("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/forest_canopy_bulk_density_oahu.png")
+plot(forest_canopy_bulk_density_oahu)
+title("Forest Canopy Bulk Density")
+dev.off()
+```
+
+### Forest Canopy Cover 2022
+```{r}
+if (!file.exists("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.Rdata")){
+  forest_canopy_cover <- raster("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.tif")
+  forest_canopy_cover_oahu <- crop(forest_canopy_cover, oahu_shp_nad83)
+  forest_canopy_cover_oahu <- mask(forest_canopy_cover_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  forest_canopy_cover_oahu <- projectRaster(forest_canopy_cover_oahu, cloud_frequency_oahu)
+  save(forest_canopy_cover_oahu, file = "Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.Rdata")
+  rm(forest_canopy_cover)
+  gc()
+} else {
+  load("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/forest_canopy_cover_oahu.png")
+plot(forest_canopy_cover_oahu)
+title("Forest Canopy Cover")
+dev.off()
+```
+
+### Forest Canopy Height 2022
+```{r}
+if (!file.exists("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.Rdata")){
+  forest_canopy_height <- raster("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.tif")
+  forest_canopy_height_oahu <- crop(forest_canopy_height, oahu_shp_nad83)
+  forest_canopy_height_oahu <- mask(forest_canopy_height_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  forest_canopy_height_oahu <- projectRaster(forest_canopy_height_oahu, cloud_frequency_oahu)
+  save(forest_canopy_height_oahu, file = "Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.Rdata")
+  rm(forest_canopy_height)
+  gc()
+} else {
+  load("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/forest_canopy_height_oahu.png")
+plot(forest_canopy_height_oahu)
+title("Forest Canopy Height")
+dev.off()
+```
+
+### Forest Height 2013
+```{r eval=FALSE}
+#forest_height <- raster("Data/Environmental_data/Forest_Height_2013/Oahu_ForestHt_2013.tif")
+
+#if (!file.exists("Data/Environmental_data/Forest_Height_2013/Oahu_ForestHt_2013.Rdata")){
+#  forest_height <- raster("Data/Environmental_data/Forest_Height_2013/Oahu_ForestHt_2013.tif")
+#  forest_height_oahu <- crop(forest_height, oahu_shp_utm4N)
+#  forest_height_oahu <- mask(forest_height_oahu, oahu_shp_utm4N)
+#  forest_height_oahu <- projectRaster(forest_height_oahu, crs = project_crs)
+#  save(forest_height_oahu, file = "Data/Environmental_data/Forest_Height_2013/Oahu_ForestHt_2013.Rdata")
+#  rm(forest_height)
+#  gc()
+#} else {
+#  load("Data/Environmental_data/Forest_Height_2013/Oahu_ForestHt_2013.Rdata")
+#}
+
+#png(filename="Outputs/Env_output_plots/forest_height_oahu.png")
+#plot(forest_height_oahu)
+#title("Forest Height")
+#dev.off()
+```
+
+### Leaf Area Index
+```{r}
+leaf_area_index <- raster("Data/Environmental_data/Leaf Area Index/LAI_month_raster/lai_ann/prj.adf")
+#leaf_area_index <- projectRaster(leaf_area_index, crs = project_crs)
+leaf_area_index_oahu <- mask(leaf_area_index, oahu_shp)
+leaf_area_index_oahu <- crop(leaf_area_index_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/leaf_area_index_oahu.png")
+plot(leaf_area_index_oahu)
+title("Leaf Area Index")
+dev.off()
+```
+
+### Relative Humidity
+```{r}
+relative_humidity <- raster("Data/Environmental_data/Relative Humidity/RH_month_raster/rh_ann/prj.adf")
+#relative_humidity <- projectRaster(relative_humidity, crs = project_crs)
+relative_humidity_oahu <- mask(relative_humidity, oahu_shp)
+relative_humidity_oahu <- crop(relative_humidity_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/relative_humidity_oahu.png")
+plot(relative_humidity_oahu)
+title("Relative Humidity")
+dev.off()
+```
+
+### Slope Degrees
+```{r}
+if (!file.exists("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.Rdata")){
+  slope_degrees <- raster("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.tif")
+  slope_degrees_oahu <- crop(slope_degrees, oahu_shp_nad83)
+  slope_degrees_oahu <- mask(slope_degrees_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  slope_degrees_oahu <- projectRaster(slope_degrees_oahu, cloud_frequency_oahu)
+  save(slope_degrees_oahu, file = "Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.Rdata")
+  rm(slope_degrees)
+  gc()
+} else {
+  load("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/slope_degrees_oahu.png")
+plot(slope_degrees_oahu)
+title("Slope Degrees")
+dev.off()
+```
+
+### Slope Percent Rise
+```{r}
+if (!file.exists("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.Rdata")){
+  slope_percent_rise <- raster("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.tif")
+  slope_percent_rise_oahu <- crop(slope_percent_rise, oahu_shp_nad83)
+  slope_percent_rise_oahu <- mask(slope_percent_rise_oahu, oahu_shp_nad83)
+  #this takes a while to run
+  slope_percent_rise_oahu <- projectRaster(slope_percent_rise_oahu, cloud_frequency_oahu)
+  save(slope_percent_rise_oahu, file = "Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.Rdata")
+  rm(slope_percent_rise)
+  gc()
+} else {
+  load("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.Rdata")
+}
+
+png(filename="Outputs/Env_output_plots/slope_percent_rise_oahu.png")
+plot(slope_percent_rise_oahu)
+title("Slope Percent Rise")
+dev.off()
+```
+
+### SO2 - Active - don't use, these are measures of so2 at various points, not a map
+```{r eval=FALSE}
+```
+
+### Soil Evaporation
+```{r}
+soil_evaporation <- raster("Data/Environmental_data/Soil Evaporation/mm/SoilEvaporation_mm_month_raster/soil_evaporation_mm_month_raster/se_mm_ann/prj.adf")
+#soil_evaporation <- projectRaster(soil_evaporation, crs = project_crs)
+soil_evaporation_oahu <- mask(soil_evaporation, oahu_shp)
+soil_evaporation_oahu <- crop(soil_evaporation_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/soil_evaporation_oahu.png")
+plot(soil_evaporation_oahu)
+title("Soil Evaporation")
+dev.off()
+```
+
+### Soil Fertility Class
+```{r}
+if (!file.exists("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84.shp")){
+  soil_fertility_class <- vect("Data/Environmental_data/Soil Fertility Class/FertilityClass_State.shp")
+  #soil_fertility_class_oahu <- mask(soil_fertility_class, oahu_shp)
+  soil_fertility_class_oahu <- crop(soil_fertility_class, oahu_shp_utm4N)
+  soil_fertility_class_oahu <- project(soil_fertility_class_oahu, cloud_frequency_oahu)
+  writeVector(soil_fertility_class_oahu, "Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84.shp")
+  rm(soil_fertility_class)
+  gc()
+} else {
+  soil_fertility_class_oahu <- vect("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84.shp")
+}
+
+ncols <- length(unique(soil_fertility_class_oahu$FertClass))
+cols=sample(col_vector_random, ncols)
+soil_colors <- cols[as.factor(soil_fertility_class_oahu$FertClass)]
+
+png(filename="Outputs/Env_output_plots/soil_fertility_class_oahu.png")
+plot(soil_fertility_class_oahu, col=soil_colors, border=NA)
+title("Soil Fertility Class")
+legend("bottomright",   # location of legend
+      legend=unique(soil_fertility_class_oahu$FertClass),
+      fill=cols)
+dev.off()
+```
+
+### Soil Nutrient Holding Capacity
+```{r}
+if (!file.exists("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84.shp")){
+  soil_nutrient_holding_capacity <- vect("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State.shp")
+  #soil_nutrient_holding_capacity_oahu <- mask(soil_nutrient_holding_capacity, oahu_shp)
+  soil_nutrient_holding_capacity_oahu <- crop(soil_nutrient_holding_capacity, oahu_shp_utm4N)
+  soil_nutrient_holding_capacity_oahu <- project(soil_nutrient_holding_capacity_oahu, cloud_frequency_oahu)
+  writeVector(soil_nutrient_holding_capacity_oahu, "Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84.shp")
+  rm(soil_nutrient_holding_capacity)
+  gc()
+} else {
+  soil_nutrient_holding_capacity_oahu <- vect("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84.shp")
+}
+ncols <- length(unique(soil_nutrient_holding_capacity_oahu$CECmod_rep) - 1)
+cols <- col_vector_ordered(ncols)
+#change 0 to gray since 0 is N/A
+cols <- c("gray", cols)
+soil_colors <- cols[as.factor(soil_nutrient_holding_capacity_oahu$CECmod_rep)]
+
+png(filename="Outputs/Env_output_plots/soil_nutrient_holding_capacity_oahu.png")
+plot(soil_nutrient_holding_capacity_oahu, col=soil_colors, border=NA)
+title("Soil Nutrient Holding Capacity")
+legend <- c("Not Available", "Low", "Moderate", "High", "Very High")
+cols <- col_vector_ordered(length(legend) - 1)
+cols <- c("gray", cols)
+legend("bottomright",   # location of legend
+      legend=legend,
+      fill=cols)
+dev.off()
+```
+
+### Soil Order Series - ask Jan about these?, don't run
+# Start large, go more specific if needed
+```{r eval=FALSE}
+if (!file.exists("Data/Environmental_data/Soil Order Series/SoilOrderSeries_State_wgs84.shp")){
+  soil_order_series <- vect("Data/Environmental_data/Soil Order Series/SoilOrderSeries_State.shp")
+  soil_order_series_oahu <- crop(soil_order_series, oahu_shp_utm4N)
+  soil_order_series_oahu <- project(soil_order_series_oahu, cloud_frequency_oahu)
+  writeVector(soil_order_series_oahu, "Data/Environmental_data/Soil Order Series/SoilOrderSeries_State_wgs84.shp")
+  rm(soil_order_series)
+  gc()
+} else {
+  soil_order_series_oahu <- vect("Data/Environmental_data/Soil Order Series/SoilOrderSeries_State_wgs84.shp")
+}
+ncols <- length(unique(soil_order_series_oahu$XXX))
+cols=sample(col_vector, ncols)
+soil_colors <- cols[as.factor(soil_order_series_oahu$XXX)]
+
+png(filename="Outputs/Env_output_plots/soil_order_series_oahu.png")
+plot(soil_order_series_oahu, col=soil_colors, border=NA)
+title("Soil Order Series")
+legend("bottomright",   # location of legend
+      legend=unique(soil_order_series_oahu$XXX),
+      fill=cols)
+dev.off()
+```
+
+### Soil Organic Matter
+```{r}
+if (!file.exists("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84.shp")){
+  soil_organic_matter <- vect("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State.shp")
+  soil_organic_matter_oahu <- crop(soil_organic_matter, oahu_shp_utm4N)
+  soil_organic_matter_oahu <- project(soil_organic_matter_oahu, cloud_frequency_oahu)
+  writeVector(soil_organic_matter_oahu, "Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84.shp")
+  rm(soil_organic_matter)
+  gc()
+} else {
+  soil_organic_matter_oahu <- vect("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84.shp")
+}
+ncols <- length(unique(soil_organic_matter_oahu$OM_rep) - 1)
+cols <- col_vector_ordered(ncols)
+#change 0 to gray since 0 is N/A
+cols <- c("gray", cols)
+soil_colors <- cols[as.factor(soil_organic_matter_oahu$OM_rep)]
+
+png(filename="Outputs/Env_output_plots/soil_organic_matter_oahu.png")
+plot(soil_organic_matter_oahu, col=soil_colors, border=NA)
+title("Soil Organic Matter")
+legend <- c("Not Available", "Low", "Moderate", "High", "Very High")
+cols <- col_vector_ordered(length(legend) - 1)
+cols <- c("gray", cols)
+legend("bottomright",   # location of legend
+      legend=legend,
+      fill=cols)
+dev.off()
+```
+
+### Soil pH
+```{r}
+if (!file.exists("Data/Environmental_data/Soil pH/pH_State_wgs84.shp")){
+  soil_ph <- vect("Data/Environmental_data/Soil pH/pH_State.shp")
+  soil_ph_oahu <- crop(soil_ph, oahu_shp_utm4N)
+  soil_ph_oahu <- project(soil_ph_oahu, cloud_frequency_oahu)
+  writeVector(soil_ph_oahu, "Data/Environmental_data/Soil pH/pH_State_wgs84.shp")
+  rm(soil_ph)
+  gc()
+} else {
+  soil_ph_oahu <- vect("Data/Environmental_data/Soil pH/pH_State_wgs84.shp")
+}
+ncols <- length(unique(soil_ph_oahu$pHmod_rep) - 1)
+cols <- col_vector_ordered(ncols)
+#change 0 to gray since 0 is N/A
+cols <- c("gray", cols)
+soil_colors <- cols[as.factor(soil_ph_oahu$pHmod_rep)]
+
+png(filename="Outputs/Env_output_plots/soil_ph_oahu.png")
+plot(soil_ph_oahu, col=soil_colors, border=NA)
+title("Soil pH")
+legend <- c("Not Available", "Acidic", "Slightly Acidic to Neutral", "Slightly Alkaline to Alkaline")
+cols <- col_vector_ordered(length(legend) - 1)
+cols <- c("gray", cols)
+legend("bottomright",   # location of legend
+      legend=legend,
+      fill=cols)
+dev.off()
+```
+
+### Soil Shrink and Swell
+```{r}
+if (!file.exists("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84.shp")){
+  soil_shrink_and_swell <- vect("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State.shp")
+  soil_shrink_and_swell_oahu <- crop(soil_shrink_and_swell, oahu_shp_utm4N)
+  soil_shrink_and_swell_oahu <- project(soil_shrink_and_swell_oahu, cloud_frequency_oahu)
+  writeVector(soil_shrink_and_swell_oahu, "Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84.shp")
+  rm(soil_shrink_and_swell)
+  gc()
+} else {
+  soil_shrink_and_swell_oahu <- vect("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84.shp")
+}
+ncols <- length(unique(soil_shrink_and_swell_oahu$COLE_rep))
+cols <- col_vector_ordered(ncols)
+soil_colors <- cols[as.factor(soil_shrink_and_swell_oahu$COLE_rep)]
+
+png(filename="Outputs/Env_output_plots/soil_shrink_and_swell_oahu.png")
+plot(soil_shrink_and_swell_oahu, col=soil_colors, border=NA)
+title("Soil Shrink and Swell")
+legend <- c("Low", "Moderate", "High", "Very High")
+cols <- col_vector_ordered(length(legend))
+legend("bottomright",   # location of legend
+      legend=legend,
+      fill=cols)
+dev.off()
+```
+
+### Soil Water Permeablity
+```{r}
+if (!file.exists("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84.shp")){
+  soil_water_permeability <- vect("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State.shp")
+  soil_water_permeability_oahu <- crop(soil_water_permeability, oahu_shp_utm4N)
+  soil_water_permeability_oahu <- project(soil_water_permeability_oahu, cloud_frequency_oahu)
+  writeVector(soil_water_permeability_oahu, "Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84.shp")
+  rm(soil_water_permeability)
+  gc()
+} else {
+  soil_water_permeability_oahu <- vect("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84.shp")
+}
+ncols <- length(unique(soil_water_permeability_oahu$Ksat_rep) - 1)
+cols <- col_vector_ordered(ncols)
+#change 0 to gray since 0 is N/A
+cols <- c("gray", cols)
+soil_colors <- cols[as.factor(soil_water_permeability_oahu$Ksat_rep)]
+
+png(filename="Outputs/Env_output_plots/soil_water_permeability_oahu.png")
+plot(soil_water_permeability_oahu, col=soil_colors, border=NA)
+title("Soil Water Permeablity")
+legend <- c("Not Available", "Slow", "Moderate", "Fast", "Very Fast")
+cols <- col_vector_ordered(length(legend) - 1)
+cols <- c("gray", cols)
+legend("bottomright",   # location of legend
+      legend=legend,
+      fill=cols)
+dev.off()
+```
+
+### TNC Ecosystems Before and Current
+```{r}
+#BEFORE
+if (!file.exists("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84.shp")){
+  tnc_before <- vect("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems.shp")
+  tnc_before_oahu <- crop(tnc_before, oahu_shp_utm4N)
+  tnc_before_oahu <- project(tnc_before_oahu, cloud_frequency_oahu)
+  writeVector(tnc_before_oahu, "Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84.shp")
+  rm(tnc_before)
+  gc()
+} else {
+  tnc_before_oahu <- vect("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84.shp")
+}
+tnc_ecosystems <- c("Lowland Dry Forest & Shrubland", "Lowland Dry Shrubland & Grassland", "Lowland Dry Ecosystems", "Lowland Mesic Forest & Shrubland", "Lowland Wet Forest & Shrubland", "Montane Wet Forest & Shrubland", "Wetland", "Dry Cliff", "Wet Cliff", "Non-native", "water")
+ncols <- length(tnc_ecosystems)
+cols=sample(col_vector_random, ncols)
+ecosystems_colors <- cols[factor(tnc_before_oahu$COMMUNITY, ordered=TRUE, levels=tnc_ecosystems)]
+
+png(filename="Outputs/Env_output_plots/tnc_before_oahu.png")
+plot(tnc_before_oahu, col=ecosystems_colors, border=NA, mar = c(2.1,4.1,4.1,10))
+title("TNC Ecosystems Before")
+legend("bottomright",   # location of legend
+      legend=tnc_ecosystems,
+      fill=cols,
+      inset=c(-.4, 0),
+      xpd=TRUE, 
+      cex = 0.7)
+dev.off()
+
+#CURRENT
+if (!file.exists("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84.shp")){
+  tnc_current <- vect("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems.shp")
+  tnc_current_oahu <- crop(tnc_current, oahu_shp_utm4N)
+  tnc_current_oahu <- project(tnc_current_oahu, cloud_frequency_oahu)
+  writeVector(tnc_current_oahu, "Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84.shp")
+  rm(tnc_current)
+  gc()
+} else {
+  tnc_current_oahu <- vect("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84.shp")
+}
+
+ecosystems_colors <- cols[factor(tnc_current_oahu$COMMUNITY, ordered=TRUE, levels=tnc_ecosystems)]
+
+png(filename="Outputs/Env_output_plots/tnc_current_oahu.png")
+plot(tnc_current_oahu, col=ecosystems_colors, border=NA, mar = c(2.1,4.1,4.1,10))
+title("TNC Ecosystems Current")
+legend("bottomright",   # location of legend
+      legend=tnc_ecosystems,
+      fill=cols,
+      inset=c(-.4, 0),
+      xpd=TRUE, 
+      cex = 0.7)
+dev.off()
+
+```
+
+### Wet Canopy Evaporation
+```{r}
+wet_canopy_evaporation <- raster("Data/Environmental_data/Wet Canopy Evaporation/mm/WetCanopyEvaporation_mm_month_raster/wet_canopy_evaporation_mm_month_raster/wce_mm_ann/prj.adf")
+#wet_canopy_evaporation <- projectRaster(wet_canopy_evaporation, crs = project_crs)
+wet_canopy_evaporation_oahu <- mask(wet_canopy_evaporation, oahu_shp)
+wet_canopy_evaporation_oahu <- crop(wet_canopy_evaporation_oahu, oahu_shp)
+
+png(filename="Outputs/Env_output_plots/wet_canopy_evaporation_oahu.png")
+plot(wet_canopy_evaporation_oahu)
+title("Wet Canopy Evaporation")
+dev.off()
+```
+
+### Wind Speed GIS - not sure how to get data from this
+```{r}
+wind_speed <- vect("Data/Environmental_data/Wind Speed GIS/30m above ground/Wind_Speed_30m/Wind_Speed_30m.shp")
+#wind_speed <- projectRaster(wind_speed, crs = project_crs)
+wind_speed_oahu <- terra::intersect(wind_speed, vect(oahu_shp))
+wind_speed_oahu <- crop(wind_speed_oahu, oahu_shp)
+ncols <- length(unique(wind_speed_oahu$speed_mps))
+cols <- col_vector_ordered(ncols)
+wind_colors <- cols[factor(wind_speed_oahu$speed_mps, ordered = TRUE)]
+
+png(filename="Outputs/Env_output_plots/wind_speed_oahu.png")
+plot(wind_speed_oahu, col=wind_colors)
+lines(oahu_shp)
+title("Wind Speed")
+legend("right",   # location of legend
+      legend=sort(unique(wind_speed_oahu$speed_mps)),
+      fill=cols,
+      cex=0.6)
+dev.off()
+```
+
+# Clean Data
+
+## Snail Data
+```{r}
+snail_data_sf_filtered <- snail_data_sf %>%
+  filter(coordinateUncertaintyInMeters <= 1000) %>%  # Remove points with an uncertainty of higher than a number
+  distinct(geometry, .keep_all = TRUE)  # Keep only distinct points based on geometry (lat and long)
+
+#change points to polygons with uncertainty
+snail_data_sf_uncertainty <- st_buffer(snail_data_sf_filtered, snail_data_sf_filtered$coordinateUncertaintyInMeters)
+```
+
+## Environmental Data
+```{r}
+# Create lists of data
+env_rasters_qual <- c(actual_evapotranspiration_oahu = actual_evapotranspiration_oahu, 
+                     available_soil_moisture_oahu = available_soil_moisture_oahu, 
+                     annual_mean_temperature = annual_mean_temperature, 
+                     mean_diurnal_range = mean_diurnal_range, 
+                     isothermality = isothermality, 
+                     temperature_seasonality = temperature_seasonality, 
+                     max_temperature = max_temperature, 
+                     min_temperature = min_temperature, 
+                     annual_temperature_range = annual_temperature_range, 
+                     temperature_wet = temperature_wet, 
+                     temperature_dry = temperature_dry, 
+                     temperature_warm = temperature_warm, 
+                     temperature_cold = temperature_cold, 
+                     precipitation = precipitation, 
+                     precipitation_wet = precipitation_wet, 
+                     precipitation_dry = precipitation_dry, 
+                     precipitation_seasonality = precipitation_seasonality, 
+                     precipitation_warm = precipitation_warm, 
+                     precipitation_cold = precipitation_cold, 
+                     canopy_wetness_fraction_oahu = canopy_wetness_fraction_oahu,
+                     cloud_frequency_oahu = cloud_frequency_oahu,
+                     elevation_oahu = elevation_oahu,
+                     existing_vegetation_cover_oahu = existing_vegetation_cover_oahu,
+                     existing_vegetation_height_oahu = existing_vegetation_height_oahu,
+                     fog_cover_oahu = fog_cover_oahu,
+                     forest_canopy_base_height_oahu = forest_canopy_base_height_oahu,
+                     forest_canopy_bulk_density_oahu = forest_canopy_bulk_density_oahu,
+                     forest_canopy_cover_oahu = forest_canopy_cover_oahu,
+                     forest_canopy_height_oahu = forest_canopy_height_oahu,
+                     leaf_area_index_oahu = leaf_area_index_oahu,
+                     relative_humidity_oahu = relative_humidity_oahu,
+                     slope_degrees_oahu = slope_degrees_oahu,
+                     slope_percent_rise_oahu = slope_percent_rise_oahu,
+                     soil_evaporation_oahu = soil_evaporation_oahu,
+                     wet_canopy_evaporation_oahu = wet_canopy_evaporation_oahu
+                     )
+env_rasters_class <- c(existing_vegetation_type_oahu = existing_vegetation_type_oahu)
+env_shapes_qual <- c(soil_nutrient_holding_capacity_oahu = soil_nutrient_holding_capacity_oahu,
+                    soil_organic_matter_oahu = soil_organic_matter_oahu,
+                    soil_ph_oahu = soil_ph_oahu,
+                    soil_shrink_and_swell_oahu = soil_shrink_and_swell_oahu,
+                    soil_water_permeability_oahu = soil_water_permeability_oahu
+                    )
+env_shapes_class <- c(soil_fertility_class_oahu = soil_fertility_class_oahu,
+                      tnc_before_oahu = tnc_before_oahu,
+                      tnc_current_oahu = tnc_current_oahu)
+
+#wind_speed_oahu
+```
+
+
+# Pull Niche Data
+
+## Snails
+```{r}
+#env_rasters_qual
+snail_env_data <- data.frame()
+env_values <- as.data.frame(lapply(env_rasters_qual, function(raster) {
+  extract(raster, snail_data_sf_uncertainty, method = "simple", fun = mean)[, 1]
+}))
+snail_env_data <- cbind(snail_data_sf_uncertainty, env_values)
+
+#env_rasters_class
+
+
+#env_shapes_qual
+#extract(soil_nutrient_holding_capacity_oahu[,11], vect(snail_data_sf_uncertainty))
+
+#env_shapes_class
+```
+
+## Exclosures
+```{r}
+#env_rasters_qual
+exclosures_env_data <- data.frame()
+env_values <- as.data.frame(lapply(env_rasters_qual, function(raster) {
+  extract(raster, exclosure_data_sf, method = "simple", fun = mean)
+}))
+exclosures_env_data <- cbind(exclosure_data_sf, env_values)
+
+#env_rasters_class
+
+#env_shapes_qual
+
+#env_shapes_class
+```
+
+# Outputs
+
+## 1D Histogram Plots
+```{r}
+plots_list <- vector("list", length = 35)
+
+for (i in seq_along(plots_list)) {
+  
+  filename=paste("Outputs/1D_plots/", colnames(snail_env_data[, 14:49])[i], ".jpg", sep="")
+  col_name <- colnames(snail_env_data[, 14:49])[i]
+  all_oahu_data <- data.frame(as.data.frame(get(col_name)), group="Oahu")
+  micans_data <- data.frame(as.data.frame(snail_env_data[i+13])[,1], group="Amastra micans")
+  colnames(micans_data) <- colnames(all_oahu_data)
+  comb_data <- rbind(all_oahu_data, micans_data)
+  comb_data <- comb_data[complete.cases(comb_data), ]
+  
+  plots_list[[i]] <- ggplot(comb_data, aes(x = .data[[colnames(as.data.frame(get(col_name)))]])) +
+    geom_histogram(aes(y = after_stat(density), fill=group, color=group), bins = 40, alpha = 0.6, position = "identity") +
+    geom_vline(xintercept = as.data.frame(exclosures_env_data[, i+1])[,1],
+               color = "red", linetype = "solid", linewidth = .5) +
+    geom_text(data = data.frame(x = as.data.frame(exclosures_env_data[, i+1])[,1], 
+                                label = as.data.frame(exclosures_env_data[, 1])[,1]), 
+              aes(x = x, y=0, label = label), vjust = -0.5, hjust = 0, color = "black", angle = 90, size = 3.5) +
+    labs(title = colnames(snail_env_data[, 14:49])[i],
+         x = colnames(snail_env_data[, 14:49])[i],
+         y = "Frequency") +
+    theme_minimal()
+  ggsave(filename, plots_list[[i]], device = "jpg")
+}
+
+#plot_grid(plotlist = plots_list[1:8], nrow = 4, align = "h")
+#plot_grid(plotlist = plots_list[9:16], nrow = 4, align = "h")
+#plot_grid(plotlist = plots_list[17:24], nrow = 4, align = "h")
+#plot_grid(plotlist = plots_list[25:32], nrow = 4, align = "h")
+#plot_grid(plotlist = plots_list[33:35], nrow = 3, align = "h")
+
+```
+
+## Calculate Exclosure Rankings
+```{r}
+all_iterations_df <- data.frame(Exclosure = character())
+
+for (i in 1:35) {
+  filename=paste("Outputs/1D_plots/", colnames(snail_env_data[, 14:49])[i], ".jpg", sep="")
+  col_name <- colnames(snail_env_data[, 14:49])[i]
+  all_oahu_data <- data.frame(as.data.frame(get(col_name)), group="Oahu")
+  micans_data <- data.frame(as.data.frame(snail_env_data[i+13])[,1], group="Amastra micans")
+  colnames(micans_data) <- colnames(all_oahu_data)
+  comb_data <- rbind(all_oahu_data, micans_data)
+  comb_data <- comb_data[complete.cases(comb_data), ]
+  
+  #rank the exclosures
+  cut_numbers <- cut(as.data.frame(exclosures_env_data[, i+1])[,1], breaks = hist(comb_data[[1]], plot = FALSE, breaks = 40)$breaks, include.lowest = TRUE)
+  frequency_table <- table(cut(micans_data[[1]], breaks = hist(comb_data[[1]], plot = FALSE, breaks = 40)$breaks, include.lowest = TRUE))
+  data_to_rank <- data.frame(Exclosure = as.data.frame(exclosures_env_data[, 1])[,1], Bin = cut_numbers)
+  
+  ranked_exclosures <- data_to_rank %>%
+    left_join(data.frame(Bin = names(frequency_table), Freq = as.numeric(frequency_table)), by = "Bin") %>%
+    arrange(desc(Freq), Exclosure) %>%
+    select(Exclosure, Freq)
+  
+  ranked_exclosures <- ranked_exclosures %>%
+    mutate(Rank = dense_rank(desc(Freq))) %>%
+    select(Exclosure, Rank)
+  colnames(ranked_exclosures) <- c("Exclosure", colnames(snail_env_data[, 14:49])[i])
+  all_iterations_df <- merge(all_iterations_df, ranked_exclosures, by = "Exclosure", all = TRUE)
+}
+
+
+all_iterations_df$Sum <- rowSums(all_iterations_df[, -1, drop = FALSE])
+all_iterations_df$Mean <- rowMeans(all_iterations_df[, -c(1, ncol(all_iterations_df)), drop = FALSE])
+all_iterations_df <- all_iterations_df[order(all_iterations_df$Sum, decreasing = FALSE), ]
+write.csv(all_iterations_df, file = "Outputs/exclosure_rankings.csv", row.names=FALSE)
+```
+
+
+## 2D Plots
+```{r}
+#595 combinations so don't loop through them all, just pick two
+
+xenvdata <- "relative_humidity_oahu"
+yenvdata <- "slope_degrees_oahu"
+
+filename=paste("Outputs/2D_plots/", xenvdata, "_", yenvdata, ".jpg", sep="")
+all_oahu_data <- data.frame(as.data.frame(get(xenvdata)), as.data.frame(get(yenvdata)), group="Oahu")
+micans_data <- data.frame(as.data.frame(snail_env_data[xenvdata])[,1], as.data.frame(snail_env_data[yenvdata])[,1], group="Amastra micans")
+colnames(micans_data) <- colnames(all_oahu_data)
+comb_data <- rbind(all_oahu_data, micans_data)
+comb_data <- comb_data[complete.cases(comb_data), ]
+exclosure_data <- data.frame(as.data.frame(exclosures_env_data[, xenvdata])[,1], as.data.frame(exclosures_env_data[, yenvdata])[,1], as.data.frame(exclosures_env_data[, 1])[,1])
+colnames(exclosure_data) <- c(xenvdata, yenvdata, "Exclosure")
+
+plot <- ggplot(comb_data, aes(x = .data[[colnames(as.data.frame(get(xenvdata)))]],
+                                         y = .data[[colnames(as.data.frame(get(yenvdata)))]])) +
+  geom_point(aes(fill=group, color=group), alpha = 0.5, position = "identity") +
+  geom_point(data = exclosure_data, aes(x = .data[[colnames(exclosure_data)[1]]], 
+                                        y = .data[[colnames(exclosure_data)[2]]]), color = "red", shape = 17, size = 3) +
+  geom_text(data = exclosure_data, aes(x = .data[[colnames(exclosure_data)[1]]], 
+                                       y = .data[[colnames(exclosure_data)[2]]], 
+                                       label = .data[[colnames(exclosure_data)[3]]]),
+            vjust = -.8, hjust = 0, color = "black", size = 3.5) +
+  labs(title = paste(xenvdata, "x", yenvdata),
+       x = xenvdata,
+       y = yenvdata) +
+  theme_minimal()
+plot
+ggsave(filename, plot, device = "jpg")
+
+```
+
+## 3D Plots
+```{r}
+
+```

@@ -1,0 +1,10 @@
+"Exclosure","actual_evapotranspiration_oahu","available_soil_moisture_oahu","annual_mean_temperature","mean_diurnal_range","isothermality","temperature_seasonality","max_temperature","min_temperature","annual_temperature_range","temperature_wet","temperature_dry","temperature_warm","temperature_cold","precipitation","precipitation_wet","precipitation_dry","precipitation_seasonality","precipitation_warm","precipitation_cold","canopy_wetness_fraction_oahu","cloud_frequency_oahu","elevation_oahu","existing_vegetation_cover_oahu","existing_vegetation_height_oahu","fog_cover_oahu","forest_canopy_base_height_oahu","forest_canopy_bulk_density_oahu","forest_canopy_cover_oahu","forest_canopy_height_oahu","leaf_area_index_oahu","relative_humidity_oahu","slope_degrees_oahu","slope_percent_rise_oahu","soil_evaporation_oahu","wet_canopy_evaporation_oahu","Sum","Mean"
+"Hapapa ",1,1,1,1,1,3,4,3,1,1,4,3,3,2,1,1,1,2,1,1,2,1,1,1,1,1,1,2,1,1,3,1,1,1,2,56,1.6
+"West Makaleha/Three Points",2,2,3,2,2,1,1,1,2,1,1,3,3,3,3,2,4,3,2,1,2,1,3,1,3,2,1,3,1,4,3,2,4,2,5,79,2.25714285714286
+"Kahanahaiki",2,3,2,3,2,2,2,2,2,2,5,2,2,1,2,1,2,1,3,3,5,2,3,1,2,3,2,4,1,2,2,3,2,2,2,80,2.28571428571429
+"Pahole",4,3,2,3,2,2,2,2,2,2,5,2,1,4,2,1,2,1,3,3,5,2,2,1,1,1,1,1,2,3,2,7,8,2,2,88,2.51428571428571
+"Palikea North",2,1,5,4,2,1,3,4,3,3,3,4,4,2,1,1,3,2,4,4,1,4,4,2,1,1,1,3,1,1,3,5,3,2,3,91,2.6
+"Kalawahine/Manoa/Makiki",5,5,2,5,1,5,1,4,4,3,5,1,5,6,4,3,6,4,5,5,5,4,1,1,5,1,1,3,1,1,4,4,5,1,1,117,3.34285714285714
+"Palikea South",5,1,5,5,2,3,5,5,3,4,2,4,6,2,1,1,3,2,4,4,4,3,6,3,1,3,2,5,4,5,3,6,7,1,5,125,3.57142857142857
+"Poamoho",3,5,4,5,2,5,6,1,4,5,6,5,6,6,4,3,6,4,5,2,5,2,5,3,5,3,2,5,4,3,1,6,6,1,4,142,4.05714285714286
+"Kaala",6,4,6,5,1,4,6,5,4,6,6,5,6,5,4,2,5,3,5,3,3,5,4,2,4,3,2,3,3,5,2,7,8,3,6,151,4.31428571428571
