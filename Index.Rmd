@@ -56,41 +56,16 @@ exclosure_data_sf <- st_as_sf(exclosure_data, coords = c("decimalLongitude", "de
 
 ## Import Environmental Data
 
-### Island Shapefile
-```{r}
-#shapefile
-hawaii_shp <- vect(x = "Data/HI_shapefile/HI.shp") %>% st_as_sf()
-hawaii_shp <- st_transform(hawaii_shp, crs = project_crs)
-hawaii_shp_cast <- st_cast(hawaii_shp, "POLYGON")
-
-bigisland_shp <- st_as_sf(hawaii_shp_cast$geometry[1])
-lanai_shp <- st_as_sf(hawaii_shp_cast$geometry[4])
-maui_shp <- st_as_sf(hawaii_shp_cast$geometry[8])
-molokai_shp <- st_as_sf(hawaii_shp_cast$geometry[11])
-kauai_shp <- st_as_sf(hawaii_shp_cast$geometry[23])
-oahu_shp <- st_as_sf(hawaii_shp_cast$geometry[28])
-
-#replace this to change shapefile used - "bigisland", "lanai", "maui", "molokai", "kauai", "oahu"
-chosen_island <- "oahu"
-chosen_map <- get(paste(chosen_island, "_shp", sep = ""))
-
-plot(chosen_map)
-#Create an NAD83 shapefile for later
-chosen_map_nad83 <- st_transform(chosen_map, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
-chosen_map_utm4N <- st_transform(chosen_map, "+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
-
-```
-
 ### Mountain shapefiles
 
-#### Create mountain shapfiles
+#### Create mountain shapefiles
 ```{r include=FALSE}
 #Read in elevation raster
 elevation <- raster("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.tif")
 oahu_nad83 <- st_transform(oahu_shp, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
 elevation_cut <- crop(elevation, oahu_nad83)
 elevation_cut <- mask(elevation_cut, oahu_nad83)
-elevation_cut <- projectRaster(elevation_cut, crs="+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
+elevation_cut <- projectRaster(elevation_cut, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 
 #Set a threshold, clip and convert
 elevation_threshold <- 300
@@ -100,23 +75,50 @@ binary_mask <- rast(binary_mask)
 elevation_polygon <- as.polygons(binary_mask)
 
 #waianaes
-extent_to_filter <- ext(576549.6, 599000, 2354081, 2396270)
+extent_to_filter <- ext(-158.2608, -158.05, 21.28336, 21.66665)
 selected_polygons <- crop(elevation_polygon, extent_to_filter)
 plot(selected_polygons)
-
-#save
 shapefile_path <- "Data/Mountains_shapefile/Waianae.shp"
 writeVector(selected_polygons, shapefile_path, overwrite=TRUE)
 
 #koolaus
-extent_to_filter <- ext(599000, 637460.8, 2354081, 2396270)
+extent_to_filter <- ext(-158.05, -157.6748, 21.28336, 21.66665)
 selected_polygons <- crop(elevation_polygon, extent_to_filter)
 plot(selected_polygons)
-
-#save
 shapefile_path <- "Data/Mountains_shapefile/Koolaus.shp"
 writeVector(selected_polygons, shapefile_path, overwrite=TRUE)
 ```
+
+### Base Shapefile
+```{r}
+#shapefile
+hawaii_shp <- vect(x = "Data/HI_shapefile/HI.shp") %>% st_as_sf()
+hawaii_shp <- st_transform(hawaii_shp, crs = project_crs)
+hawaii_shp_cast <- st_cast(hawaii_shp, "POLYGON")
+
+koolau_shp <- vect(x = "Data/Mountains_shapefile/Koolaus.shp") %>% st_as_sf()
+
+waianae_shp <- vect(x = "Data/Mountains_shapefile/Waianae.shp") %>% st_as_sf()
+
+bigisland_shp <- st_as_sf(hawaii_shp_cast$geometry[1])
+lanai_shp <- st_as_sf(hawaii_shp_cast$geometry[4])
+maui_shp <- st_as_sf(hawaii_shp_cast$geometry[8])
+molokai_shp <- st_as_sf(hawaii_shp_cast$geometry[11])
+kauai_shp <- st_as_sf(hawaii_shp_cast$geometry[23])
+oahu_shp <- st_as_sf(hawaii_shp_cast$geometry[28])
+
+#replace this to change shapefile used - "bigisland", "lanai", "maui", "molokai", "kauai", "oahu", "koolau", "waianae"
+chosen_island <- "koolau"
+chosen_map <- get(paste(chosen_island, "_shp", sep = ""))
+
+plot(chosen_map)
+#Create an NAD83 shapefile for later
+chosen_map_nad83 <- st_transform(chosen_map, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
+chosen_map_utm4N <- st_transform(chosen_map, "+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
+
+```
+
+
 
 ### Actual Evapotranspiration (mm)
 ```{r}
@@ -670,7 +672,7 @@ legend("bottomright",   # location of legend
 dev.off()
 ```
 
-### Soil Order Series - ask Jan about these?, don't run
+### Soil Order Series, don't run
 # Start large, go more specific if needed
 ```{r eval=FALSE}
 if (!file.exists(paste("Data/Environmental_data/Soil Order Series/SoilOrderSeries_State_wgs84_", chosen_island, ".shp", sep=""))){
