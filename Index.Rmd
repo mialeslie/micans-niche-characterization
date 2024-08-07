@@ -56,7 +56,7 @@ exclosure_data_sf <- st_as_sf(exclosure_data, coords = c("decimalLongitude", "de
 
 ## Import Environmental Data
 
-### Shapefile
+### Island Shapefile
 ```{r}
 #shapefile
 hawaii_shp <- vect(x = "Data/HI_shapefile/HI.shp") %>% st_as_sf()
@@ -83,19 +83,39 @@ chosen_map_utm4N <- st_transform(chosen_map, "+proj=utm +zone=4 +ellps=GRS80 +to
 
 ### Mountain shapefiles
 
-###also add exclosure name change 
+#### Create mountain shapfiles
 ```{r include=FALSE}
-#Oahu shapefile
-#Oahu_Elevation_Contours_100ft
-#hawaii_shp <- vect(x = "Data/HI_shapefile/HI.shp") %>% st_as_sf()
-#hawaii_shp <- st_transform(hawaii_shp, crs = project_crs)
-#hawaii_shp_cast <- st_cast(hawaii_shp, "POLYGON")
-#oahu_shp <- st_as_sf(hawaii_shp_cast$geometry[28])
-#plot(oahu_shp)
-#Create an NAD83 shapefile for later
-#oahu_shp_nad83 <- st_transform(oahu_shp, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
-#oahu_shp_utm4N <- st_transform(oahu_shp, "+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
+#Read in elevation raster
+elevation <- raster("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.tif")
+oahu_nad83 <- st_transform(oahu_shp, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
+elevation_cut <- crop(elevation, oahu_nad83)
+elevation_cut <- mask(elevation_cut, oahu_nad83)
+elevation_cut <- projectRaster(elevation_cut, crs="+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
 
+#Set a threshold, clip and convert
+elevation_threshold <- 300
+binary_mask <- elevation_cut > elevation_threshold
+binary_mask[binary_mask == 0] <- NA
+binary_mask <- rast(binary_mask)
+elevation_polygon <- as.polygons(binary_mask)
+
+#waianaes
+extent_to_filter <- ext(576549.6, 599000, 2354081, 2396270)
+selected_polygons <- crop(elevation_polygon, extent_to_filter)
+plot(selected_polygons)
+
+#save
+shapefile_path <- "Data/Mountains_shapefile/Waianae.shp"
+writeVector(selected_polygons, shapefile_path, overwrite=TRUE)
+
+#koolaus
+extent_to_filter <- ext(599000, 637460.8, 2354081, 2396270)
+selected_polygons <- crop(elevation_polygon, extent_to_filter)
+plot(selected_polygons)
+
+#save
+shapefile_path <- "Data/Mountains_shapefile/Koolaus.shp"
+writeVector(selected_polygons, shapefile_path, overwrite=TRUE)
 ```
 
 ### Actual Evapotranspiration (mm)
