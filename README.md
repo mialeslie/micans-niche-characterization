@@ -36,28 +36,19 @@ install.packages(c("hypervolume", "sf", "terra", "raster", "RColorBrewer", "dply
 
 The project is organized as follows:
 
+```
 Data/
-
 ├── Snail_data/
-
 │   ├── micans.csv
-
 │   └── oahu_exclosures.csv
-
 ├── Environmental_data/
-
 │   ├── Elevation/
-
 │   │   └── Tif/
-
 │   ├── Actual Evapotranspiration/
-
 │   ├── Available Soil Moisture/
-
 │   └── ...
-
 └── HI_shapefile/
-
+```
 -   **Snail Data:** CSV files containing occurrence records of *Amastra micans*.
 
 -   **Environmental Data:** Includes raster files for climatic variables (e.g., temperature, precipitation) and shapefiles for environmental features (e.g., soil types, vegetation).
