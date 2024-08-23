@@ -108,7 +108,7 @@ kauai_shp <- st_as_sf(hawaii_shp_cast$geometry[23])
 oahu_shp <- st_as_sf(hawaii_shp_cast$geometry[28])
 
 #replace this to change shapefile used - "bigisland", "lanai", "maui", "molokai", "kauai", "oahu", "koolau", "waianae"
-chosen_island <- "koolau"
+chosen_island <- "waianae"
 chosen_map <- get(paste(chosen_island, "_shp", sep = ""))
 
 plot(chosen_map)
@@ -117,8 +117,6 @@ chosen_map_nad83 <- st_transform(chosen_map, "+proj=aea +lat_0=13 +lon_0=-157 +l
 chosen_map_utm4N <- st_transform(chosen_map, "+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
 
 ```
-
-
 
 ### Actual Evapotranspiration (mm)
 ```{r}
