@@ -1322,7 +1322,7 @@ tryCatch ({
 exclosures_env_data <- data.frame()
 assign("exclosures_env_data", TRUE, env=globalenv())
 tryCatch ({
-  env_values <- as.data.frame(lapply(env_rasters_qual_snails, function(raster) {
+  env_values <- as.data.frame(lapply(env_rasters_qual, function(raster) {
     extract(raster, exclosure_data_sf, method = "simple", fun = mean)
   }))
   exclosures_env_data <- cbind(exclosure_data_sf, env_values)
