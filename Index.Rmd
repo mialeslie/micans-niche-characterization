@@ -51,6 +51,9 @@ exclosure_data <- read.csv(input_exclosures_filename, header = TRUE)
 #convert to sf object
 snail_data_sf <- st_as_sf(snail_data, coords = c("decimalLongitude", "decimalLatitude"), crs = project_crs)
 exclosure_data_sf <- st_as_sf(exclosure_data, coords = c("decimalLongitude", "decimalLatitude"), crs = project_crs)
+
+#replace this to describe what island the snails are found - "bigisland", "lanai", "maui", "molokai", "kauai", "oahu", "koolau", "waianae"
+snail_islands <- "oahu"
 ```
 
 
@@ -61,32 +64,32 @@ exclosure_data_sf <- st_as_sf(exclosure_data, coords = c("decimalLongitude", "de
 #### Create mountain shapefiles
 ```{r include=FALSE}
 #Read in elevation raster
-elevation <- raster("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.tif")
-oahu_nad83 <- st_transform(oahu_shp, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
-elevation_cut <- crop(elevation, oahu_nad83)
-elevation_cut <- mask(elevation_cut, oahu_nad83)
-elevation_cut <- projectRaster(elevation_cut, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+#elevation <- raster("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.tif")
+#oahu_nad83 <- st_transform(oahu_shp, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
+#elevation_cut <- crop(elevation, oahu_nad83)
+#elevation_cut <- mask(elevation_cut, oahu_nad83)
+#elevation_cut <- projectRaster(elevation_cut, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
 
 #Set a threshold, clip and convert
-elevation_threshold <- 300
-binary_mask <- elevation_cut > elevation_threshold
-binary_mask[binary_mask == 0] <- NA
-binary_mask <- rast(binary_mask)
-elevation_polygon <- as.polygons(binary_mask)
+#elevation_threshold <- 300
+#binary_mask <- elevation_cut > elevation_threshold
+#binary_mask[binary_mask == 0] <- NA
+#binary_mask <- rast(binary_mask)
+#elevation_polygon <- as.polygons(binary_mask)
 
 #waianaes
-extent_to_filter <- ext(-158.2608, -158.05, 21.28336, 21.66665)
-selected_polygons <- crop(elevation_polygon, extent_to_filter)
-plot(selected_polygons)
-shapefile_path <- "Data/Mountains_shapefile/Waianae.shp"
-writeVector(selected_polygons, shapefile_path, overwrite=TRUE)
+#extent_to_filter <- ext(-158.2608, -158.05, 21.28336, 21.66665)
+#selected_polygons <- crop(elevation_polygon, extent_to_filter)
+#plot(selected_polygons)
+#shapefile_path <- "Data/Mountains_shapefile/Waianae.shp"
+#writeVector(selected_polygons, shapefile_path, overwrite=TRUE)
 
 #koolaus
-extent_to_filter <- ext(-158.05, -157.6748, 21.28336, 21.66665)
-selected_polygons <- crop(elevation_polygon, extent_to_filter)
-plot(selected_polygons)
-shapefile_path <- "Data/Mountains_shapefile/Koolaus.shp"
-writeVector(selected_polygons, shapefile_path, overwrite=TRUE)
+#extent_to_filter <- ext(-158.05, -157.6748, 21.28336, 21.66665)
+#selected_polygons <- crop(elevation_polygon, extent_to_filter)
+#plot(selected_polygons)
+#shapefile_path <- "Data/Mountains_shapefile/Koolaus.shp"
+#writeVector(selected_polygons, shapefile_path, overwrite=TRUE)
 ```
 
 ### Base Shapefile
@@ -97,9 +100,7 @@ hawaii_shp <- st_transform(hawaii_shp, crs = project_crs)
 hawaii_shp_cast <- st_cast(hawaii_shp, "POLYGON")
 
 koolau_shp <- vect(x = "Data/Mountains_shapefile/Koolaus.shp") %>% st_as_sf()
-
 waianae_shp <- vect(x = "Data/Mountains_shapefile/Waianae.shp") %>% st_as_sf()
-
 bigisland_shp <- st_as_sf(hawaii_shp_cast$geometry[1])
 lanai_shp <- st_as_sf(hawaii_shp_cast$geometry[4])
 maui_shp <- st_as_sf(hawaii_shp_cast$geometry[8])
@@ -107,8 +108,8 @@ molokai_shp <- st_as_sf(hawaii_shp_cast$geometry[11])
 kauai_shp <- st_as_sf(hawaii_shp_cast$geometry[23])
 oahu_shp <- st_as_sf(hawaii_shp_cast$geometry[28])
 
-#replace this to change shapefile used - "bigisland", "lanai", "maui", "molokai", "kauai", "oahu", "koolau", "waianae"
-chosen_island <- "waianae"
+#replace this to change shapefile used to compare env variables against - "bigisland", "lanai", "maui", "molokai", "kauai", "oahu", "koolau", "waianae"
+chosen_island <- "koolau"
 chosen_map <- get(paste(chosen_island, "_shp", sep = ""))
 
 plot(chosen_map)
@@ -118,12 +119,25 @@ chosen_map_utm4N <- st_transform(chosen_map, "+proj=utm +zone=4 +ellps=GRS80 +to
 
 ```
 
+### Get Snail Shapefile
+```{r}
+majorislands_shp <- rbind(bigisland_shp, lanai_shp, maui_shp, molokai_shp, kauai_shp, oahu_shp)
+
+snail_island_shp <- majorislands_shp[st_intersects(majorislands_shp, snail_data_sf, sparse = FALSE), ]
+snail_island_shp <- snail_island_shp[!st_is_empty(snail_island_shp), ]
+snail_island_shp_utm4N <- st_transform(snail_island_shp, "+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
+```
+
+
 ### Actual Evapotranspiration (mm)
 ```{r}
 actual_evapotranspiration <- raster("Data/Environmental_data/Actual Evapotranspiration (mm)/AET_mm_month_raster/aet_mm_ann/prj.adf")
 #actual_evapotranspiration <- projectRaster(actual_evapotranspiration, crs = project_crs)
 actual_evapotranspiration_cut <- mask(actual_evapotranspiration, chosen_map)
 actual_evapotranspiration_cut <- crop(actual_evapotranspiration_cut, chosen_map)
+
+actual_evapotranspiration_snails <- mask(actual_evapotranspiration, snail_island_shp)
+actual_evapotranspiration_snails <- crop(actual_evapotranspiration_snails, snail_island_shp)
 
 png(filename=paste("Outputs/Env_output_plots/actual_evapotranspiration_", chosen_island, ".png", sep=""))
 plot(actual_evapotranspiration_cut)
@@ -147,6 +161,9 @@ available_soil_moisture <- raster("Data/Environmental_data/Available Soil Moistu
 #available_soil_moisture <- projectRaster(available_soil_moisture, crs = project_crs)
 available_soil_moisture_cut <- mask(available_soil_moisture, chosen_map)
 available_soil_moisture_cut <- crop(available_soil_moisture_cut, chosen_map)
+
+available_soil_moisture_snails <- mask(available_soil_moisture, snail_island_shp)
+available_soil_moisture_snails <- crop(available_soil_moisture_snails, snail_island_shp)
 
 png(filename=paste("Outputs/Env_output_plots/available_soil_moisture_", chosen_island, ".png", sep=""))
 plot(available_soil_moisture_cut)
@@ -176,108 +193,130 @@ dev.off()
 19	Precipitation of coldest quarter
 ```{r}
 bioclim_variables <- stack("Data/Environmental_data/Bioclim Variables/baseline_bioclims.tif")
-bioclim_variables <- mask(bioclim_variables, chosen_map)
-bioclim_variables <- crop(bioclim_variables, chosen_map)
-annual_mean_temperature <- bioclim_variables$baseline_bioclims_1
-mean_diurnal_range <- bioclim_variables$baseline_bioclims_2
-isothermality <- bioclim_variables$baseline_bioclims_3
-temperature_seasonality <- bioclim_variables$baseline_bioclims_4
-max_temperature <- bioclim_variables$baseline_bioclims_5
-min_temperature <- bioclim_variables$baseline_bioclims_6
-annual_temperature_range <- bioclim_variables$baseline_bioclims_7
-temperature_wet <- bioclim_variables$baseline_bioclims_8
-temperature_dry <- bioclim_variables$baseline_bioclims_9
-temperature_warm <- bioclim_variables$baseline_bioclims_10
-temperature_cold <- bioclim_variables$baseline_bioclims_11
-precipitation <- bioclim_variables$baseline_bioclims_12
-precipitation_wet <- bioclim_variables$baseline_bioclims_16
-precipitation_dry <- bioclim_variables$baseline_bioclims_17
-precipitation_seasonality <- bioclim_variables$baseline_bioclims_15
-precipitation_warm <- bioclim_variables$baseline_bioclims_18
-precipitation_cold <- bioclim_variables$baseline_bioclims_19
+bioclim_variables_cut <- mask(bioclim_variables, chosen_map)
+bioclim_variables_cut <- crop(bioclim_variables, chosen_map)
+
+annual_mean_temperature_cut <- bioclim_variables_cut$baseline_bioclims_1
+mean_diurnal_range_cut <- bioclim_variables_cut$baseline_bioclims_2
+isothermality_cut <- bioclim_variables_cut$baseline_bioclims_3
+temperature_seasonality_cut <- bioclim_variables_cut$baseline_bioclims_4
+max_temperature_cut <- bioclim_variables_cut$baseline_bioclims_5
+min_temperature_cut <- bioclim_variables_cut$baseline_bioclims_6
+annual_temperature_range_cut <- bioclim_variables_cut$baseline_bioclims_7
+temperature_wet_cut <- bioclim_variables_cut$baseline_bioclims_8
+temperature_dry_cut <- bioclim_variables_cut$baseline_bioclims_9
+temperature_warm_cut <- bioclim_variables_cut$baseline_bioclims_10
+temperature_cold_cut <- bioclim_variables_cut$baseline_bioclims_11
+precipitation_cut <- bioclim_variables_cut$baseline_bioclims_12
+precipitation_wet_cut <- bioclim_variables_cut$baseline_bioclims_16
+precipitation_dry_cut <- bioclim_variables_cut$baseline_bioclims_17
+precipitation_seasonality_cut <- bioclim_variables_cut$baseline_bioclims_15
+precipitation_warm_cut <- bioclim_variables_cut$baseline_bioclims_18
+precipitation_cold_cut <- bioclim_variables_cut$baseline_bioclims_19
+
+bioclim_variables_snails <- mask(bioclim_variables, snail_island_shp)
+bioclim_variables_snails <- crop(bioclim_variables_snails, snail_island_shp)
+
+annual_mean_temperature_snails <- bioclim_variables_snails$baseline_bioclims_1
+mean_diurnal_range_snails <- bioclim_variables_snails$baseline_bioclims_2
+isothermality_snails <- bioclim_variables_snails$baseline_bioclims_3
+temperature_seasonality_snails <- bioclim_variables_snails$baseline_bioclims_4
+max_temperature_snails <- bioclim_variables_snails$baseline_bioclims_5
+min_temperature_snails <- bioclim_variables_snails$baseline_bioclims_6
+annual_temperature_range_snails <- bioclim_variables_snails$baseline_bioclims_7
+temperature_wet_snails <- bioclim_variables_snails$baseline_bioclims_8
+temperature_dry_snails <- bioclim_variables_snails$baseline_bioclims_9
+temperature_warm_snails <- bioclim_variables_snails$baseline_bioclims_10
+temperature_cold_snails <- bioclim_variables_snails$baseline_bioclims_11
+precipitation_snails <- bioclim_variables_snails$baseline_bioclims_12
+precipitation_wet_snails <- bioclim_variables_snails$baseline_bioclims_16
+precipitation_dry_snails <- bioclim_variables_snails$baseline_bioclims_17
+precipitation_seasonality_snails <- bioclim_variables_snails$baseline_bioclims_15
+precipitation_warm_snails <- bioclim_variables_snails$baseline_bioclims_18
+precipitation_cold_snails <- bioclim_variables_snails$baseline_bioclims_19
 
 png(filename=paste("Outputs/Env_output_plots/annual_mean_temperature_", chosen_island, ".png", sep=""))
-plot(annual_mean_temperature)
+plot(annual_mean_temperature_cut)
 title("Annual Mean Temperature")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/mean_diurnal_range_", chosen_island, ".png", sep=""))
-plot(mean_diurnal_range)
+plot(mean_diurnal_range_cut)
 title("Mean Diurnal Range")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/isothermality_", chosen_island, ".png", sep=""))
-plot(isothermality)
+plot(isothermality_cut)
 title("Isothermality")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/temperature_seasonality_", chosen_island, ".png", sep=""))
-plot(temperature_seasonality)
+plot(temperature_seasonality_cut)
 title("Temperature Seasonality")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/max_temperature_", chosen_island, ".png", sep=""))
-plot(max_temperature)
+plot(max_temperature_cut)
 title("Max Temperature")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/min_temperature_", chosen_island, ".png", sep=""))
-plot(min_temperature)
+plot(min_temperature_cut)
 title("Minimum Temperature")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/annual_temperature_range_", chosen_island, ".png", sep=""))
-plot(annual_temperature_range)
+plot(annual_temperature_range_cut)
 title("Annual Temperature Range")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/temperature_wet_", chosen_island, ".png", sep=""))
-plot(temperature_wet)
+plot(temperature_wet_cut)
 title("Mean Temperature of Wettest Quarter")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/temperature_dry_", chosen_island, ".png", sep=""))
-plot(temperature_dry)
+plot(temperature_dry_cut)
 title("Mean Temperature of Driest Quarter")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/temperature_warm_", chosen_island, ".png", sep=""))
-plot(temperature_warm)
+plot(temperature_warm_cut)
 title("Mean Temperature of Warmest Quarter")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/temperature_cold_", chosen_island, ".png", sep=""))
-plot(temperature_cold)
+plot(temperature_cold_cut)
 title("Mean Temperature of Coldest Quarter")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/precipitation_", chosen_island, ".png", sep=""))
-plot(precipitation)
+plot(precipitation_cut)
 title("Annual Precipitation")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/precipitation_wet_", chosen_island, ".png", sep=""))
-plot(precipitation_wet)
+plot(precipitation_wet_cut)
 title("Precipitation of Wettest Quarter")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/precipitation_dry_", chosen_island, ".png", sep=""))
-plot(precipitation_dry)
+plot(precipitation_dry_cut)
 title("Precipitation of Driest Quarter")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/precipitation_seasonality_", chosen_island, ".png", sep=""))
-plot(precipitation_seasonality)
+plot(precipitation_seasonality_cut)
 title("Precipitation Seasonality")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/precipitation_warm_", chosen_island, ".png", sep=""))
-plot(precipitation_warm)
+plot(precipitation_warm_cut)
 title("Precipitation of Warmest Quarter")
 dev.off()
 
 png(filename=paste("Outputs/Env_output_plots/precipitation_cold_", chosen_island, ".png", sep=""))
-plot(precipitation_cold)
+plot(precipitation_cold_cut)
 title("Precipitation of Coldest Quarter")
 dev.off()
 
@@ -286,9 +325,12 @@ dev.off()
 ### Canopy Wetness Fraction
 ```{r}
 canopy_wetness_fraction <- raster("Data/Environmental_data/Canopy Wetness Fraction/FractionalCanopyWetness_month_raster/fr_c_w_ann/prj.adf")
-#canopy_wetness_fraction <- projectRaster(canopy_wetness_fraction, crs = project_crs)
+
 canopy_wetness_fraction_cut <- mask(canopy_wetness_fraction, chosen_map)
 canopy_wetness_fraction_cut <- crop(canopy_wetness_fraction_cut, chosen_map)
+
+canopy_wetness_fraction_snails <- mask(canopy_wetness_fraction, snail_island_shp)
+canopy_wetness_fraction_snails <- crop(canopy_wetness_fraction_snails, snail_island_shp)
 
 png(filename=paste("Outputs/Env_output_plots/canopy_wetness_fraction_", chosen_island, ".png", sep=""))
 plot(canopy_wetness_fraction_cut)
@@ -303,6 +345,9 @@ cloud_frequency <- raster("Data/Environmental_data/Cloud Frequency/CloudFreq_mon
 cloud_frequency_cut <- mask(cloud_frequency, chosen_map)
 cloud_frequency_cut <- crop(cloud_frequency_cut, chosen_map)
 
+cloud_frequency_snails <- mask(cloud_frequency, snail_island_shp)
+cloud_frequency_snails <- crop(cloud_frequency_snails, snail_island_shp)
+
 png(filename=paste("Outputs/Env_output_plots/cloud_frequency_", chosen_island, ".png", sep=""))
 plot(cloud_frequency_cut)
 title("Cloud Frequency")
@@ -315,17 +360,30 @@ dev.off()
 
 ### Elevation
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Elevation/Tif/LH20_Elev_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.Rdata", sep=""))){
   elevation <- raster("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.tif")
-  elevation_cut <- crop(elevation, chosen_map_nad83)
-  elevation_cut <- mask(elevation_cut, chosen_map_nad83)
   #this takes a while to run
-  elevation_cut <- projectRaster(elevation_cut, cloud_frequency_cut)
-  save(elevation_cut, file = paste("Data/Environmental_data/Elevation/Tif/LH20_Elev_220_", chosen_island, ".Rdata", sep=""))
+  elevation <- projectRaster(elevation, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(elevation, file = paste("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.Rdata", sep=""))
+  
+  elevation_cut <- mask(elevation, chosen_map)
+  elevation_cut <- crop(elevation_cut, chosen_map)
+  
+  elevation_snails <- mask(elevation, snail_island_shp)
+  elevation_snails <- crop(elevation_snails, snail_island_shp)
+  
   rm(elevation)
   gc()
 } else {
-  load(paste("Data/Environmental_data/Elevation/Tif/LH20_Elev_220_", chosen_island, ".Rdata", sep=""))
+  load(paste("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.Rdata", sep=""))
+  elevation_cut <- mask(elevation, chosen_map)
+  elevation_cut <- crop(elevation_cut, chosen_map)
+  
+  elevation_snails <- mask(elevation, snail_island_shp)
+  elevation_snails <- crop(elevation_snails, snail_island_shp)
+  
+  rm(elevation)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/elevation_", chosen_island,".png", sep=""))
@@ -336,18 +394,30 @@ dev.off()
 
 ### Existing Vegetation Cover 2022
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.Rdata", sep=""))){
   existing_vegetation_cover <- raster("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.tif")
-  existing_vegetation_cover_cut <- crop(existing_vegetation_cover, chosen_map_nad83)
-  existing_vegetation_cover_cut <- mask(existing_vegetation_cover_cut, chosen_map_nad83)
-  #this takes a while to run
-  existing_vegetation_cover_cut <- projectRaster(existing_vegetation_cover_cut, cloud_frequency_cut)
+  existing_vegetation_cover <- projectRaster(existing_vegetation_cover, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(existing_vegetation_cover, file = paste("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.Rdata", sep=""))
   
-  save(existing_vegetation_cover_cut, file = paste("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220_", chosen_island, ".Rdata", sep=""))
+  existing_vegetation_cover_cut <- mask(existing_vegetation_cover, chosen_map)
+  existing_vegetation_cover_cut <- crop(existing_vegetation_cover_cut, chosen_map)
+  
+  existing_vegetation_cover_snails <- mask(existing_vegetation_cover, snail_island_shp)
+  existing_vegetation_cover_snails <- crop(existing_vegetation_cover_snails, snail_island_shp)
+
   rm(existing_vegetation_cover)
   gc()
 } else {
-  load(paste("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220_", chosen_island, ".Rdata", sep=""))
+  load(paste("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.Rdata", sep=""))
+  
+  existing_vegetation_cover_cut <- mask(existing_vegetation_cover, chosen_map)
+  existing_vegetation_cover_cut <- crop(existing_vegetation_cover_cut, chosen_map)
+  
+  existing_vegetation_cover_snails <- mask(existing_vegetation_cover, snail_island_shp)
+  existing_vegetation_cover_snails <- crop(existing_vegetation_cover_snails, snail_island_shp)
+  
+  rm(existing_vegetation_cover)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/existing_vegetation_cover_", chosen_island, ".png", sep=""))
@@ -358,18 +428,30 @@ dev.off()
 
 ### Existing Vegetation Height 2022
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.Rdata", sep=""))){
   existing_vegetation_height <- raster("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.tif")
-  existing_vegetation_height_cut <- crop(existing_vegetation_height, chosen_map_nad83)
-  existing_vegetation_height_cut <- mask(existing_vegetation_height_cut, chosen_map_nad83)
-  #this takes a while to run
-  existing_vegetation_height_cut <- projectRaster(existing_vegetation_height_cut, cloud_frequency_cut)
+  existing_vegetation_height <- projectRaster(existing_vegetation_height, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(existing_vegetation_height, file = paste("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.Rdata", sep=""))
   
-  save(existing_vegetation_height_cut, file = paste("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220_", chosen_island, ".Rdata", sep=""))
+  existing_vegetation_height_cut <- crop(existing_vegetation_height, chosen_map)
+  existing_vegetation_height_cut <- mask(existing_vegetation_height_cut, chosen_map)
+
+  existing_vegetation_height_snails <- crop(existing_vegetation_height, snail_island_shp)
+  existing_vegetation_height_snails <- mask(existing_vegetation_height_snails, snail_island_shp)  
+
   rm(existing_vegetation_height)
   gc()
 } else {
-  load(paste("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220_", chosen_island, ".Rdata", sep=""))
+  load(paste("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.Rdata", sep=""))
+  
+  existing_vegetation_height_cut <- crop(existing_vegetation_height, chosen_map)
+  existing_vegetation_height_cut <- mask(existing_vegetation_height_cut, chosen_map)
+
+  existing_vegetation_height_snails <- crop(existing_vegetation_height, snail_island_shp)
+  existing_vegetation_height_snails <- mask(existing_vegetation_height_snails, snail_island_shp)  
+
+  rm(existing_vegetation_height)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/existing_vegetation_height_", chosen_island, ".png", sep=""))
@@ -381,21 +463,30 @@ dev.off()
 ### Existing Vegetation Type 2022
 ```{r}
 #Existing Vegetation Type 2022
-if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.Rdata", sep=""))){
   existing_vegetation_type <- raster("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.tif")
-  existing_vegetation_type_cut <- crop(existing_vegetation_type, chosen_map_nad83)
-  existing_vegetation_type_cut <- mask(existing_vegetation_type_cut, chosen_map_nad83)
-  levels <- levels(existing_vegetation_type_cut)[[1]][c(1, 2)]
-  #this takes a while to run
-  existing_vegetation_type_cut <- projectRaster(existing_vegetation_type_cut, cloud_frequency_cut)
+  existing_vegetation_type <- projectRaster(existing_vegetation_type, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(existing_vegetation_type, file = paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.Rdata", sep=""))
   
-  save(existing_vegetation_type_cut, file = paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220_", chosen_island, ".Rdata", sep=""))
-  save(levels, file = paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220_", chosen_island, "_levels.Rdata", sep=""))
+  existing_vegetation_type_cut <- crop(existing_vegetation_type, chosen_map)
+  existing_vegetation_type_cut <- mask(existing_vegetation_type_cut, chosen_map)
+  
+  existing_vegetation_type_snails <- crop(existing_vegetation_type, snail_island_shp)
+  existing_vegetation_type_snails <- mask(existing_vegetation_type_snails, snail_island_shp)
+
   rm(existing_vegetation_type)
   gc()
 } else {
-  load(paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220_", chosen_island, ".Rdata", sep=""))
-  load(file = paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220_", chosen_island, "_levels.Rdata", sep=""))
+  load(paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.Rdata", sep=""))
+  
+  existing_vegetation_type_cut <- crop(existing_vegetation_type, chosen_map)
+  existing_vegetation_type_cut <- mask(existing_vegetation_type_cut, chosen_map)
+  
+  existing_vegetation_type_snails <- crop(existing_vegetation_type, snail_island_shp)
+  existing_vegetation_type_snails <- mask(existing_vegetation_type_snails, snail_island_shp)
+
+  rm(existing_vegetation_type)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/existing_vegetation_type_", chosen_island, ".png", sep=""))
@@ -411,6 +502,9 @@ fog_cover <- raster("Data/Environmental_data/Fog Cover/MAP_1920_1969_eff_250.tif
 fog_cover_cut <- mask(fog_cover, chosen_map)
 fog_cover_cut <- crop(fog_cover_cut, chosen_map)
 
+fog_cover_snails <- mask(fog_cover, snail_island_shp)
+fog_cover_snails <- crop(fog_cover_snails, snail_island_shp)
+
 png(filename=paste("Outputs/Env_output_plots/fog_cover_", chosen_island,".png", sep=""))
 plot(fog_cover_cut)
 title("Fog Cover")
@@ -419,18 +513,30 @@ dev.off()
 
 ### Forest Canopy Base Height 2022
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.Rdata", sep=""))){
   forest_canopy_base_height <- raster("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.tif")
-  forest_canopy_base_height_cut <- crop(forest_canopy_base_height, chosen_map_nad83)
-  forest_canopy_base_height_cut <- mask(forest_canopy_base_height_cut, chosen_map_nad83)
-  #this takes a while to run
-  forest_canopy_base_height_cut <- projectRaster(forest_canopy_base_height_cut, cloud_frequency_cut)
+  forest_canopy_base_height <- projectRaster(forest_canopy_base_height, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(forest_canopy_base_height, file = paste("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.Rdata", sep=""))
   
-  save(forest_canopy_base_height_cut, file = paste("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220_", chosen_island, ".Rdata", sep=""))
+  forest_canopy_base_height_cut <- crop(forest_canopy_base_height, chosen_map)
+  forest_canopy_base_height_cut <- mask(forest_canopy_base_height_cut, chosen_map)
+
+  forest_canopy_base_height_snails <- crop(forest_canopy_base_height, snail_island_shp)
+  forest_canopy_base_height_snails <- mask(forest_canopy_base_height_snails, snail_island_shp)
+  
   rm(forest_canopy_base_height)
   gc()
 } else {
-  load(paste("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220_", chosen_island, ".Rdata", sep=""))
+  load(paste("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.Rdata", sep=""))
+  
+  forest_canopy_base_height_cut <- crop(forest_canopy_base_height, chosen_map)
+  forest_canopy_base_height_cut <- mask(forest_canopy_base_height_cut, chosen_map)
+
+  forest_canopy_base_height_snails <- crop(forest_canopy_base_height, snail_island_shp)
+  forest_canopy_base_height_snails <- mask(forest_canopy_base_height_snails, snail_island_shp)
+  
+  rm(forest_canopy_base_height)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/forest_canopy_base_height_", chosen_island, ".png", sep=""))
@@ -441,18 +547,30 @@ dev.off()
 
 ### Forest Canopy Bulk Density 2022
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.Rdata", sep=""))){
   forest_canopy_bulk_density <- raster("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.tif")
-  forest_canopy_bulk_density_cut <- crop(forest_canopy_bulk_density, chosen_map_nad83)
-  forest_canopy_bulk_density_cut <- mask(forest_canopy_bulk_density_cut, chosen_map_nad83)
-  #this takes a while to run
-  forest_canopy_bulk_density_cut <- projectRaster(forest_canopy_bulk_density_cut, cloud_frequency_cut)
-  save(forest_canopy_bulk_density_cut, file = paste("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220_", chosen_island, ".Rdata", sep=""))
+  forest_canopy_bulk_density <- projectRaster(forest_canopy_bulk_density, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(forest_canopy_bulk_density, file = paste("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.Rdata", sep=""))
+  
+  forest_canopy_bulk_density_cut <- crop(forest_canopy_bulk_density, chosen_map)
+  forest_canopy_bulk_density_cut <- mask(forest_canopy_bulk_density_cut, chosen_map)
+
+  forest_canopy_bulk_density_snails <- crop(forest_canopy_bulk_density, snail_island_shp)
+  forest_canopy_bulk_density_snails <- mask(forest_canopy_bulk_density_snails, snail_island_shp)  
+  
   rm(forest_canopy_bulk_density)
   gc()
 } else {
+  load(paste("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.Rdata", sep=""))
   
-  load(paste("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220_", chosen_island, ".Rdata", sep=""))
+  forest_canopy_bulk_density_cut <- crop(forest_canopy_bulk_density, chosen_map)
+  forest_canopy_bulk_density_cut <- mask(forest_canopy_bulk_density_cut, chosen_map)
+
+  forest_canopy_bulk_density_snails <- crop(forest_canopy_bulk_density, snail_island_shp)
+  forest_canopy_bulk_density_snails <- mask(forest_canopy_bulk_density_snails, snail_island_shp)  
+  
+  rm(forest_canopy_bulk_density)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/forest_canopy_bulk_density_", chosen_island, ".png", sep=""))
@@ -463,18 +581,30 @@ dev.off()
 
 ### Forest Canopy Cover 2022
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.Rdata", sep=""))){
   forest_canopy_cover <- raster("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.tif")
-  forest_canopy_cover_cut <- crop(forest_canopy_cover, chosen_map_nad83)
-  forest_canopy_cover_cut <- mask(forest_canopy_cover_cut, chosen_map_nad83)
-  #this takes a while to run
-  forest_canopy_cover_cut <- projectRaster(forest_canopy_cover_cut, cloud_frequency_cut)
-  save(forest_canopy_cover_cut, file = paste("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220_", chosen_island, ".Rdata", sep=""))
+  forest_canopy_cover <- projectRaster(forest_canopy_cover, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(forest_canopy_cover, file = paste("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.Rdata", sep=""))
+  
+  forest_canopy_cover_cut <- crop(forest_canopy_cover, chosen_map)
+  forest_canopy_cover_cut <- mask(forest_canopy_cover_cut, chosen_map)
+  
+  forest_canopy_cover_snails <- crop(forest_canopy_cover, snail_island_shp)
+  forest_canopy_cover_snails <- mask(forest_canopy_cover_snails, snail_island_shp)
+
   rm(forest_canopy_cover)
   gc()
 } else {
+  load(paste("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.Rdata", sep=""))
   
-  load(paste("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220_", chosen_island, ".Rdata", sep=""))
+  forest_canopy_cover_cut <- crop(forest_canopy_cover, chosen_map)
+  forest_canopy_cover_cut <- mask(forest_canopy_cover_cut, chosen_map)
+  
+  forest_canopy_cover_snails <- crop(forest_canopy_cover, snail_island_shp)
+  forest_canopy_cover_snails <- mask(forest_canopy_cover_snails, snail_island_shp)
+
+  rm(forest_canopy_cover)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/forest_canopy_cover_", chosen_island,".png", sep=""))
@@ -485,17 +615,30 @@ dev.off()
 
 ### Forest Canopy Height 2022
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.Rdata", sep=""))){
   forest_canopy_height <- raster("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.tif")
-  forest_canopy_height_cut <- crop(forest_canopy_height, chosen_map_nad83)
-  forest_canopy_height_cut <- mask(forest_canopy_height_cut, chosen_map_nad83)
-  #this takes a while to run
-  forest_canopy_height_cut <- projectRaster(forest_canopy_height_cut, cloud_frequency_cut)
-  save(forest_canopy_height_cut, file = paste("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220_", chosen_island, ".Rdata", sep=""))
+  forest_canopy_height <- projectRaster(forest_canopy_height, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(forest_canopy_height, file = paste("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.Rdata", sep=""))
+  
+  forest_canopy_height_cut <- crop(forest_canopy_height, chosen_map)
+  forest_canopy_height_cut <- mask(forest_canopy_height_cut, chosen_map)
+  
+  forest_canopy_height_snails <- crop(forest_canopy_height, snail_island_shp)
+  forest_canopy_height_snails <- mask(forest_canopy_height_snails, snail_island_shp)
+
   rm(forest_canopy_height)
   gc()
 } else {
-  load(paste("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220_", chosen_island, ".Rdata", sep=""))
+  load(paste("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.Rdata", sep=""))
+  
+  forest_canopy_height_cut <- crop(forest_canopy_height, chosen_map)
+  forest_canopy_height_cut <- mask(forest_canopy_height_cut, chosen_map)
+  
+  forest_canopy_height_snails <- crop(forest_canopy_height, snail_island_shp)
+  forest_canopy_height_snails <- mask(forest_canopy_height_snails, snail_island_shp)
+
+  rm(forest_canopy_height)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/forest_canopy_height_", chosen_island, ".png", sep=""))
@@ -533,6 +676,9 @@ leaf_area_index <- raster("Data/Environmental_data/Leaf Area Index/LAI_month_ras
 leaf_area_index_cut <- mask(leaf_area_index, chosen_map)
 leaf_area_index_cut <- crop(leaf_area_index_cut, chosen_map)
 
+leaf_area_index_snails <- mask(leaf_area_index, snail_island_shp)
+leaf_area_index_snails <- crop(leaf_area_index_snails, snail_island_shp)
+
 png(filename=paste("Outputs/Env_output_plots/leaf_area_index_", chosen_island, ".png"))
 plot(leaf_area_index_cut)
 title("Leaf Area Index")
@@ -546,6 +692,9 @@ relative_humidity <- raster("Data/Environmental_data/Relative Humidity/RH_month_
 relative_humidity_cut <- mask(relative_humidity, chosen_map)
 relative_humidity_cut <- crop(relative_humidity_cut, chosen_map)
 
+relative_humidity_snails <- mask(relative_humidity, snail_island_shp)
+relative_humidity_snails <- crop(relative_humidity_snails, snail_island_shp)
+
 png(filename=paste("Outputs/Env_output_plots/relative_humidity_", chosen_island, ".png", sep=""))
 plot(relative_humidity_cut)
 title("Relative Humidity")
@@ -554,17 +703,30 @@ dev.off()
 
 ### Slope Degrees
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.Rdata", sep=""))){
   slope_degrees <- raster("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.tif")
-  slope_degrees_cut <- crop(slope_degrees, chosen_map_nad83)
-  slope_degrees_cut <- mask(slope_degrees_cut, chosen_map_nad83)
-  #this takes a while to run
-  slope_degrees_cut <- projectRaster(slope_degrees_cut, cloud_frequency_cut)
-  save(slope_degrees_cut, file = paste("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220_", chosen_island, ".Rdata", sep=""))
+  slope_degrees <- projectRaster(slope_degrees, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(slope_degrees, file = paste("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.Rdata", sep=""))
+  
+  slope_degrees_cut <- crop(slope_degrees, chosen_map)
+  slope_degrees_cut <- mask(slope_degrees_cut, chosen_map)
+  
+  slope_degrees_snails <- crop(slope_degrees, snail_island_shp)
+  slope_degrees_snails <- mask(slope_degrees_snails, snail_island_shp)
+
   rm(slope_degrees)
   gc()
 } else {
-  load(paste("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220_", chosen_island, ".Rdata", sep=""))
+  load(paste("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.Rdata", sep=""))
+
+  slope_degrees_cut <- crop(slope_degrees, chosen_map)
+  slope_degrees_cut <- mask(slope_degrees_cut, chosen_map)
+  
+  slope_degrees_snails <- crop(slope_degrees, snail_island_shp)
+  slope_degrees_snails <- mask(slope_degrees_snails, snail_island_shp)
+
+  rm(slope_degrees)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/slope_degrees_", chosen_island, ".png", sep=""))
@@ -575,18 +737,30 @@ dev.off()
 
 ### Slope Percent Rise
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220_", chosen_island, ".Rdata", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.Rdata", sep=""))){
   slope_percent_rise <- raster("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.tif")
-  slope_percent_rise_cut <- crop(slope_percent_rise, chosen_map_nad83)
-  slope_percent_rise_cut <- mask(slope_percent_rise_cut, chosen_map_nad83)
-  #this takes a while to run
-  slope_percent_rise_cut <- projectRaster(slope_percent_rise_cut, cloud_frequency_cut)
+  slope_percent_rise <- projectRaster(slope_percent_rise, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  save(slope_percent_rise, file = paste("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.Rdata", sep=""))
   
-  save(slope_percent_rise_cut, file = paste("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220_", chosen_island, ".Rdata", sep=""))
+  slope_percent_rise_cut <- crop(slope_percent_rise, chosen_map)
+  slope_percent_rise_cut <- mask(slope_percent_rise_cut, chosen_map)
+  
+  slope_percent_rise_snails <- crop(slope_percent_rise, snail_island_shp)
+  slope_percent_rise_snails <- mask(slope_percent_rise_snails, snail_island_shp)
+
   rm(slope_percent_rise)
   gc()
 } else {
-  load(paste("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220_", chosen_island, ".Rdata", sep=""))
+  load(paste("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.Rdata", sep=""))
+  
+  slope_percent_rise_cut <- crop(slope_percent_rise, chosen_map)
+  slope_percent_rise_cut <- mask(slope_percent_rise_cut, chosen_map)
+  
+  slope_percent_rise_snails <- crop(slope_percent_rise, snail_island_shp)
+  slope_percent_rise_snails <- mask(slope_percent_rise_snails, snail_island_shp)
+
+  rm(slope_percent_rise)
+  gc()
 }
 
 png(filename=paste("Outputs/Env_output_plots/slope_percent_rise_", chosen_island, ".png", sep=""))
@@ -606,6 +780,9 @@ soil_evaporation <- raster("Data/Environmental_data/Soil Evaporation/mm/SoilEvap
 soil_evaporation_cut <- mask(soil_evaporation, chosen_map)
 soil_evaporation_cut <- crop(soil_evaporation_cut, chosen_map)
 
+soil_evaporation_snails <- mask(soil_evaporation, snail_island_shp)
+soil_evaporation_snails <- crop(soil_evaporation_snails, snail_island_shp)
+
 png(filename=paste("Outputs/Env_output_plots/soil_evaporation_", chosen_island, ".png", sep=""))
 plot(soil_evaporation_cut)
 title("Soil Evaporation")
@@ -614,16 +791,26 @@ dev.off()
 
 ### Soil Fertility Class
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84_", chosen_island, ".shp", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84.shp", sep=""))){
   soil_fertility_class <- vect("Data/Environmental_data/Soil Fertility Class/FertilityClass_State.shp")
-  #soil_fertility_class_cut <- mask(soil_fertility_class, chosen_map)
-  soil_fertility_class_cut <- crop(soil_fertility_class, chosen_map_utm4N)
-  soil_fertility_class_cut <- project(soil_fertility_class_cut, cloud_frequency_cut)
-  writeVector(soil_fertility_class_cut, paste("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_fertility_class <- project(soil_fertility_class, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  writeVector(soil_fertility_class, paste("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
+
+  soil_fertility_class_cut <- crop(soil_fertility_class, chosen_map)
+  
+  soil_fertility_class_snails <- crop(soil_fertility_class, snail_island_shp)
+
   rm(soil_fertility_class)
   gc()
 } else {
-  soil_fertility_class_cut <- vect(paste("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_fertility_class <- vect(paste("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84.shp", sep=""))
+  
+  soil_fertility_class_cut <- crop(soil_fertility_class, chosen_map)
+  
+  soil_fertility_class_snails <- crop(soil_fertility_class, snail_island_shp)
+  
+  rm(soil_fertility_class)
+  gc()
 }
 
 ncols <- length(unique(soil_fertility_class_cut$FertClass))
@@ -641,16 +828,26 @@ dev.off()
 
 ### Soil Nutrient Holding Capacity
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84_", chosen_island, ".shp", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84.shp", sep=""))){
   soil_nutrient_holding_capacity <- vect("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State.shp")
-  #soil_nutrient_holding_capacity_cut <- mask(soil_nutrient_holding_capacity, chosen_map)
-  soil_nutrient_holding_capacity_cut <- crop(soil_nutrient_holding_capacity, chosen_map_utm4N)
-  soil_nutrient_holding_capacity_cut <- project(soil_nutrient_holding_capacity_cut, cloud_frequency_cut)
-  writeVector(soil_nutrient_holding_capacity_cut, paste("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_nutrient_holding_capacity <- project(soil_nutrient_holding_capacity, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  writeVector(soil_nutrient_holding_capacity, paste("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
+
+  soil_nutrient_holding_capacity_cut <- crop(soil_nutrient_holding_capacity, chosen_map)
+
+  soil_nutrient_holding_capacity_snails <- crop(soil_nutrient_holding_capacity, snail_island_shp)
+  
   rm(soil_nutrient_holding_capacity)
   gc()
 } else {
-  soil_nutrient_holding_capacity_cut <- vect(paste("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_nutrient_holding_capacity <- vect(paste("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84.shp", sep=""))
+  
+  soil_nutrient_holding_capacity_cut <- crop(soil_nutrient_holding_capacity, chosen_map)
+
+  soil_nutrient_holding_capacity_snails <- crop(soil_nutrient_holding_capacity, snail_island_shp)
+  
+  rm(soil_nutrient_holding_capacity)
+  gc()
 }
 ncols <- length(unique(soil_nutrient_holding_capacity_cut$CECmod_rep) - 1)
 cols <- col_vector_ordered(ncols)
@@ -673,42 +870,52 @@ dev.off()
 ### Soil Order Series, don't run
 # Start large, go more specific if needed
 ```{r eval=FALSE}
-if (!file.exists(paste("Data/Environmental_data/Soil Order Series/SoilOrderSeries_State_wgs84_", chosen_island, ".shp", sep=""))){
-  soil_order_series <- vect("Data/Environmental_data/Soil Order Series/SoilOrderSeries_State.shp")
-  soil_order_series_cut <- crop(soil_order_series, chosen_map_utm4N)
-  soil_order_series_cut <- project(soil_order_series_cut, cloud_frequency_cut)
-  writeVector(soil_order_series_cut, paste("Data/Environmental_data/Soil Order Series/SoilOrderSeries_State_wgs84_", chosen_island, ".shp", sep=""))
-  rm(soil_order_series)
-  gc()
-} else {
+#if (!file.exists(paste("Data/Environmental_data/Soil Order #Series/SoilOrderSeries_State_wgs84_", chosen_island, ".shp", sep=""))){
+#  soil_order_series <- vect("Data/Environmental_data/Soil Order #Series/SoilOrderSeries_State.shp")
+#  soil_order_series_cut <- crop(soil_order_series, chosen_map_utm4N)
+#  soil_order_series_cut <- project(soil_order_series_cut, cloud_frequency_cut)
+#  writeVector(soil_order_series_cut, paste("Data/Environmental_data/Soil Order #Series/SoilOrderSeries_State_wgs84_", chosen_island, ".shp", sep=""))
+#  rm(soil_order_series)
+#  gc()
+#} else {
   
-  soil_order_series_cut <- vect(paste("Data/Environmental_data/Soil Order Series/SoilOrderSeries_State_wgs84_", chosen_island, ".shp", sep=""))
-}
-ncols <- length(unique(soil_order_series_cut$XXX))
-cols=sample(col_vector, ncols)
-soil_colors <- cols[as.factor(soil_order_series_cut$XXX)]
+#  soil_order_series_cut <- vect(paste("Data/Environmental_data/Soil Order #Series/SoilOrderSeries_State_wgs84_", chosen_island, ".shp", sep=""))
+#}
+#ncols <- length(unique(soil_order_series_cut$XXX))
+#cols=sample(col_vector, ncols)
+#soil_colors <- cols[as.factor(soil_order_series_cut$XXX)]
 
-png(filename=paste("Outputs/Env_output_plots/soil_order_series_", chosen_island, ".png", sep=""))
-plot(soil_order_series_cut, col=soil_colors, border=NA)
-title("Soil Order Series")
-legend("bottomright",   # location of legend
-      legend=unique(soil_order_series_cut$XXX),
-      fill=cols)
-dev.off()
+#png(filename=paste("Outputs/Env_output_plots/soil_order_series_", chosen_island, ".png", sep=""))
+#plot(soil_order_series_cut, col=soil_colors, border=NA)
+#title("Soil Order Series")
+#legend("bottomright",   # location of legend
+#      legend=unique(soil_order_series_cut$XXX),
+#      fill=cols)
+#dev.off()
 ```
 
 ### Soil Organic Matter
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84_", chosen_island, ".shp", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84.shp", sep=""))){
   soil_organic_matter <- vect("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State.shp")
-  soil_organic_matter_cut <- crop(soil_organic_matter, chosen_map_utm4N)
-  soil_organic_matter_cut <- project(soil_organic_matter_cut, cloud_frequency_cut)
-  writeVector(soil_organic_matter_cut, paste("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_organic_matter <- project(soil_organic_matter, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  writeVector(soil_organic_matter, paste("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
+  
+  soil_organic_matter_cut <- crop(soil_organic_matter, chosen_map)
+  
+  soil_organic_matter_snails <- crop(soil_organic_matter, snail_island_shp)
+
   rm(soil_organic_matter)
   gc()
 } else {
+  soil_organic_matter <- vect(paste("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84.shp", sep=""))
   
-  soil_organic_matter_cut <- vect(paste("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_organic_matter_cut <- crop(soil_organic_matter, chosen_map)
+  
+  soil_organic_matter_snails <- crop(soil_organic_matter, snail_island_shp)
+
+  rm(soil_organic_matter)
+  gc()
 }
 ncols <- length(unique(soil_organic_matter_cut$OM_rep) - 1)
 cols <- col_vector_ordered(ncols)
@@ -730,16 +937,26 @@ dev.off()
 
 ### Soil pH
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Soil pH/pH_State_wgs84_", chosen_island, ".shp", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Soil pH/pH_State_wgs84.shp", sep=""))){
   soil_ph <- vect("Data/Environmental_data/Soil pH/pH_State.shp")
-  soil_ph_cut <- crop(soil_ph, chosen_map_utm4N)
-  soil_ph_cut <- project(soil_ph_cut, cloud_frequency_cut)
-  writeVector(soil_ph_cut, paste("Data/Environmental_data/Soil pH/pH_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_ph <- project(soil_ph, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  writeVector(soil_ph, paste("Data/Environmental_data/Soil pH/pH_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
+  
+  soil_ph_cut <- crop(soil_ph, chosen_map)
+  
+  soil_ph_snails <- crop(soil_ph, snail_island_shp)
+
   rm(soil_ph)
   gc()
 } else {
+  soil_ph <- vect(paste("Data/Environmental_data/Soil pH/pH_State_wgs84.shp", sep=""))
   
-  soil_ph_cut <- vect(paste("Data/Environmental_data/Soil pH/pH_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_ph_cut <- crop(soil_ph, chosen_map)
+  
+  soil_ph_snails <- crop(soil_ph, snail_island_shp)
+
+  rm(soil_ph)
+  gc()
 }
 ncols <- length(unique(soil_ph_cut$pHmod_rep) - 1)
 cols <- col_vector_ordered(ncols)
@@ -761,15 +978,26 @@ dev.off()
 
 ### Soil Shrink and Swell
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84_", chosen_island, ".shp", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84.shp", sep=""))){
   soil_shrink_and_swell <- vect("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State.shp")
-  soil_shrink_and_swell_cut <- crop(soil_shrink_and_swell, chosen_map_utm4N)
-  soil_shrink_and_swell_cut <- project(soil_shrink_and_swell_cut, cloud_frequency_cut)
-  writeVector(soil_shrink_and_swell_cut, paste("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_shrink_and_swell <- project(soil_shrink_and_swell, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  writeVector(soil_shrink_and_swell, paste("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
+  
+  soil_shrink_and_swell_cut <- crop(soil_shrink_and_swell, chosen_map)
+  
+  soil_shrink_and_swell_snails <- crop(soil_shrink_and_swell, snail_island_shp)
+
   rm(soil_shrink_and_swell)
   gc()
 } else {
-  soil_shrink_and_swell_cut <- vect(paste("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_shrink_and_swell <- vect(paste("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84.shp", sep=""))
+  
+  soil_shrink_and_swell_cut <- crop(soil_shrink_and_swell, chosen_map)
+  
+  soil_shrink_and_swell_snails <- crop(soil_shrink_and_swell, snail_island_shp)
+
+  rm(soil_shrink_and_swell)
+  gc()
 }
 ncols <- length(unique(soil_shrink_and_swell_cut$COLE_rep))
 cols <- col_vector_ordered(ncols)
@@ -788,15 +1016,26 @@ dev.off()
 
 ### Soil Water Permeablity
 ```{r}
-if (!file.exists(paste("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84_", chosen_island, ".shp", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84.shp", sep=""))){
   soil_water_permeability <- vect("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State.shp")
-  soil_water_permeability_cut <- crop(soil_water_permeability, chosen_map_utm4N)
-  soil_water_permeability_cut <- project(soil_water_permeability_cut, cloud_frequency_cut)
-  writeVector(soil_water_permeability_cut, paste("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_water_permeability <- project(soil_water_permeability, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  writeVector(soil_water_permeability, paste("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
+  
+  soil_water_permeability_cut <- crop(soil_water_permeability, chosen_map)
+  
+  soil_water_permeability_snails <- crop(soil_water_permeability, snail_island_shp)
+
   rm(soil_water_permeability)
   gc()
 } else {
-  soil_water_permeability_cut <- vect(paste("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84_", chosen_island, ".shp", sep=""))
+  soil_water_permeability <- vect(paste("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84.shp", sep=""))
+  
+  soil_water_permeability_cut <- crop(soil_water_permeability, chosen_map)
+  
+  soil_water_permeability_snails <- crop(soil_water_permeability, snail_island_shp)
+
+  rm(soil_water_permeability)
+  gc()
 }
 ncols <- length(unique(soil_water_permeability_cut$Ksat_rep) - 1)
 cols <- col_vector_ordered(ncols)
@@ -819,15 +1058,26 @@ dev.off()
 ### TNC Ecosystems Before and Current
 ```{r}
 #BEFORE
-if (!file.exists(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84_", chosen_island, ".shp", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84.shp", sep=""))){
   tnc_before <- vect("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems.shp")
-  tnc_before_cut <- crop(tnc_before, chosen_map_utm4N)
-  tnc_before_cut <- project(tnc_before_cut, cloud_frequency_cut)
-  writeVector(tnc_before_cut, paste("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84_", chosen_island, ".shp", sep=""))
+  tnc_before <- project(tnc_before, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  writeVector(tnc_before, paste("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84.shp", sep=""), filetype="ESRI Shapefile")
+  
+  tnc_before_cut <- crop(tnc_before, chosen_map)
+  
+  tnc_before_snails <- crop(tnc_before, snail_island_shp)
+
   rm(tnc_before)
   gc()
 } else {
-  tnc_before_cut <- vect(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84_", chosen_island, ".shp", sep=""))
+  tnc_before <- vect(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84.shp", sep=""))
+  
+  tnc_before_cut <- crop(tnc_before, chosen_map)
+  
+  tnc_before_snails <- crop(tnc_before, snail_island_shp)
+
+  rm(tnc_before)
+  gc()
 }
 tnc_ecosystems <- c("Lowland Dry Forest & Shrubland", "Lowland Dry Shrubland & Grassland", "Lowland Dry Ecosystems", "Lowland Mesic Forest & Shrubland", "Lowland Wet Forest & Shrubland", "Montane Wet Forest & Shrubland", "Wetland", "Dry Cliff", "Wet Cliff", "Non-native", "water")
 ncols <- length(tnc_ecosystems)
@@ -846,16 +1096,26 @@ legend("bottomright",   # location of legend
 dev.off()
 
 #CURRENT
-if (!file.exists(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84_", chosen_island, ".shp", sep=""))){
+if (!file.exists(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84.shp", sep=""))){
   tnc_current <- vect("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems.shp")
-  tnc_current_cut <- crop(tnc_current, chosen_map_utm4N)
-  tnc_current_cut <- project(tnc_current_cut, cloud_frequency_cut)
-  writeVector(tnc_current_cut, paste("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84_", chosen_island, ".shp", sep=""))
+  tnc_current <- project(tnc_current, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  writeVector(tnc_current, paste("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84.shp", sep=""), filetype="ESRI Shapefile")
+  
+  tnc_current_cut <- crop(tnc_current, chosen_map)
+  
+  tnc_current_snails <- crop(tnc_current, snail_island_shp)
+
   rm(tnc_current)
   gc()
 } else {
+  tnc_current <- vect(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84.shp", sep=""))
   
-  tnc_current_cut <- vect(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84_", chosen_island, ".shp", sep=""))
+  tnc_current_cut <- crop(tnc_current, chosen_map)
+  
+  tnc_current_snails <- crop(tnc_current, snail_island_shp)
+
+  rm(tnc_current)
+  gc()
 }
 
 ecosystems_colors <- cols[factor(tnc_current_cut$COMMUNITY, ordered=TRUE, levels=tnc_ecosystems)]
@@ -880,6 +1140,9 @@ wet_canopy_evaporation <- raster("Data/Environmental_data/Wet Canopy Evaporation
 wet_canopy_evaporation_cut <- mask(wet_canopy_evaporation, chosen_map)
 wet_canopy_evaporation_cut <- crop(wet_canopy_evaporation_cut, chosen_map)
 
+wet_canopy_evaporation_snails <- mask(wet_canopy_evaporation, snail_island_shp)
+wet_canopy_evaporation_snails <- crop(wet_canopy_evaporation_snails, snail_island_shp)
+
 png(filename=paste("Outputs/Env_output_plots/wet_canopy_evaporation_", chosen_island, ".png", sep=""))
 plot(wet_canopy_evaporation_cut)
 title("Wet Canopy Evaporation")
@@ -888,23 +1151,23 @@ dev.off()
 
 ### Wind Speed GIS - not sure how to get data from this
 ```{r}
-wind_speed <- vect("Data/Environmental_data/Wind Speed GIS/30m above ground/Wind_Speed_30m/Wind_Speed_30m.shp")
+#wind_speed <- vect("Data/Environmental_data/Wind Speed GIS/30m above ground/Wind_Speed_30m/Wind_Speed_30m.shp")
 #wind_speed <- projectRaster(wind_speed, crs = project_crs)
-wind_speed_cut <- terra::intersect(wind_speed, vect(chosen_map))
-wind_speed_cut <- crop(wind_speed_cut, chosen_map)
-ncols <- length(unique(wind_speed_cut$speed_mps))
-cols <- col_vector_ordered(ncols)
-wind_colors <- cols[factor(wind_speed_cut$speed_mps, ordered = TRUE)]
+#wind_speed_cut <- terra::intersect(wind_speed, vect(chosen_map))
+#wind_speed_cut <- crop(wind_speed_cut, chosen_map)
+#ncols <- length(unique(wind_speed_cut$speed_mps))
+#cols <- col_vector_ordered(ncols)
+#wind_colors <- cols[factor(wind_speed_cut$speed_mps, ordered = TRUE)]
 
-png(filename=paste("Outputs/Env_output_plots/wind_speed_", chosen_island, ".png", sep=""))
-plot(wind_speed_cut, col=wind_colors)
-lines(chosen_map)
-title("Wind Speed")
-legend("right",   # location of legend
-      legend=sort(unique(wind_speed_cut$speed_mps)),
-      fill=cols,
-      cex=0.6)
-dev.off()
+#png(filename=paste("Outputs/Env_output_plots/wind_speed_", chosen_island, ".png", sep=""))
+#plot(wind_speed_cut, col=wind_colors)
+#lines(chosen_map)
+#title("Wind Speed")
+#legend("right",   # location of legend
+#      legend=sort(unique(wind_speed_cut$speed_mps)),
+#      fill=cols,
+#      cex=0.6)
+#dev.off()
 ```
 
 # Clean Data
@@ -920,27 +1183,28 @@ snail_data_sf_uncertainty <- st_buffer(snail_data_sf_filtered, snail_data_sf_fil
 ```
 
 ## Environmental Data
+### Base Maps
 ```{r}
 # Create lists of data
 env_rasters_qual <- c(actual_evapotranspiration_cut = actual_evapotranspiration_cut, 
                      available_soil_moisture_cut = available_soil_moisture_cut, 
-                     annual_mean_temperature = annual_mean_temperature, 
-                     mean_diurnal_range = mean_diurnal_range, 
-                     isothermality = isothermality, 
-                     temperature_seasonality = temperature_seasonality, 
-                     max_temperature = max_temperature, 
-                     min_temperature = min_temperature, 
-                     annual_temperature_range = annual_temperature_range, 
-                     temperature_wet = temperature_wet, 
-                     temperature_dry = temperature_dry, 
-                     temperature_warm = temperature_warm, 
-                     temperature_cold = temperature_cold, 
-                     precipitation = precipitation, 
-                     precipitation_wet = precipitation_wet, 
-                     precipitation_dry = precipitation_dry, 
-                     precipitation_seasonality = precipitation_seasonality, 
-                     precipitation_warm = precipitation_warm, 
-                     precipitation_cold = precipitation_cold, 
+                     annual_mean_temperature_cut = annual_mean_temperature_cut, 
+                     mean_diurnal_range_cut = mean_diurnal_range_cut, 
+                     isothermality_cut = isothermality_cut, 
+                     temperature_seasonality_cut = temperature_seasonality_cut, 
+                     max_temperature_cut = max_temperature_cut, 
+                     min_temperature_cut = min_temperature_cut, 
+                     annual_temperature_range_cut = annual_temperature_range_cut, 
+                     temperature_wet_cut = temperature_wet_cut, 
+                     temperature_dry_cut = temperature_dry_cut, 
+                     temperature_warm_cut = temperature_warm_cut, 
+                     temperature_cold_cut = temperature_cold_cut, 
+                     precipitation_cut = precipitation_cut, 
+                     precipitation_wet_cut = precipitation_wet_cut, 
+                     precipitation_dry_cut = precipitation_dry_cut, 
+                     precipitation_seasonality_cut = precipitation_seasonality_cut, 
+                     precipitation_warm_cut = precipitation_warm_cut, 
+                     precipitation_cold_cut = precipitation_cold_cut, 
                      canopy_wetness_fraction_cut = canopy_wetness_fraction_cut,
                      cloud_frequency_cut = cloud_frequency_cut,
                      elevation_cut = elevation_cut,
@@ -972,6 +1236,58 @@ env_shapes_class <- c(soil_fertility_class_cut = soil_fertility_class_cut,
 #wind_speed_cut
 ```
 
+### Snail Occurrence Maps
+```{r}
+env_rasters_qual_snails <- c(actual_evapotranspiration_snails = actual_evapotranspiration_snails, 
+                     available_soil_moisture_snails = available_soil_moisture_snails, 
+                     annual_mean_temperature_snails = annual_mean_temperature_snails, 
+                     mean_diurnal_range_snails = mean_diurnal_range_snails, 
+                     isothermality_snails = isothermality_snails, 
+                     temperature_seasonality_snails = temperature_seasonality_snails, 
+                     max_temperature_snails = max_temperature_snails, 
+                     min_temperature_snails = min_temperature_snails, 
+                     annual_temperature_range_snails = annual_temperature_range_snails, 
+                     temperature_wet_snails = temperature_wet_snails, 
+                     temperature_dry_snails = temperature_dry_snails, 
+                     temperature_warm_snails = temperature_warm_snails, 
+                     temperature_cold_snails = temperature_cold_snails, 
+                     precipitation_snails = precipitation_snails, 
+                     precipitation_wet_snails = precipitation_wet_snails, 
+                     precipitation_dry_snails = precipitation_dry_snails, 
+                     precipitation_seasonality_snails = precipitation_seasonality_snails, 
+                     precipitation_warm_snails = precipitation_warm_snails, 
+                     precipitation_cold_snails = precipitation_cold_snails, 
+                     canopy_wetness_fraction_snails = canopy_wetness_fraction_snails,
+                     cloud_frequency_snails = cloud_frequency_snails,
+                     elevation_snails = elevation_snails,
+                     existing_vegetation_cover_snails = existing_vegetation_cover_snails,
+                     existing_vegetation_height_snails = existing_vegetation_height_snails,
+                     fog_cover_snails = fog_cover_snails,
+                     forest_canopy_base_height_snails = forest_canopy_base_height_snails,
+                     forest_canopy_bulk_density_snails = forest_canopy_bulk_density_snails,
+                     forest_canopy_cover_snails = forest_canopy_cover_snails,
+                     forest_canopy_height_snails = forest_canopy_height_snails,
+                     leaf_area_index_snails = leaf_area_index_snails,
+                     relative_humidity_snails = relative_humidity_snails,
+                     slope_degrees_snails = slope_degrees_snails,
+                     slope_percent_rise_snails = slope_percent_rise_snails,
+                     soil_evaporation_snails = soil_evaporation_snails,
+                     wet_canopy_evaporation_snails = wet_canopy_evaporation_snails
+                     )
+env_rasters_class_snails <- c(existing_vegetation_type_snails = existing_vegetation_type_snails)
+env_shapes_qual_snails <- c(soil_nutrient_holding_capacity_snails = soil_nutrient_holding_capacity_snails,
+                    soil_organic_matter_snails = soil_organic_matter_snails,
+                    soil_ph_snails = soil_ph_snails,
+                    soil_shrink_and_swell_snails = soil_shrink_and_swell_snails,
+                    soil_water_permeability_snails = soil_water_permeability_snails
+                    )
+env_shapes_class_snails <- c(soil_fertility_class_snails = soil_fertility_class_snails,
+                      tnc_before_snails = tnc_before_snails,
+                      tnc_current_snails = tnc_current_snails)
+
+#wind_speed_snails
+```
+
 
 # Pull Niche Data
 
@@ -982,7 +1298,7 @@ env_shapes_class <- c(soil_fertility_class_cut = soil_fertility_class_cut,
 snail_env_data <- data.frame()
 assign("snail_env_data", TRUE, env=globalenv())
 tryCatch ({
-  env_values <- as.data.frame(lapply(env_rasters_qual, function(raster) {
+  env_values <- as.data.frame(lapply(env_rasters_qual_snails, function(raster) {
     extract(raster, snail_data_sf_uncertainty, method = "simple", fun = mean)
   }))
   snail_env_data <- cbind(snail_data_sf_uncertainty, env_values)
@@ -1006,7 +1322,7 @@ tryCatch ({
 exclosures_env_data <- data.frame()
 assign("exclosures_env_data", TRUE, env=globalenv())
 tryCatch ({
-  env_values <- as.data.frame(lapply(env_rasters_qual, function(raster) {
+  env_values <- as.data.frame(lapply(env_rasters_qual_snails, function(raster) {
     extract(raster, exclosure_data_sf, method = "simple", fun = mean)
   }))
   exclosures_env_data <- cbind(exclosure_data_sf, env_values)
@@ -1066,7 +1382,7 @@ for (i in seq_along(plots_list)) {
       xlim(c(env_rasters_qual[i][[names(env_rasters_qual[i])]]@data@min, env_rasters_qual[i][[names(env_rasters_qual[i])]]@data@max)) +
       theme_minimal()
   }
-  ggsave(filename, plots_list[[i]], device = "jpg")
+  ggsave(filename, plots_list[[i]], device = "jpg", dpi = 300, width = 3184, height = 1959, units = "px")
 }
 
 #plot_grid(plotlist = plots_list[1:8], nrow = 4, align = "h")
