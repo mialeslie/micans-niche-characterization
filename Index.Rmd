@@ -68,7 +68,7 @@ snail_islands <- "oahu"
 #oahu_nad83 <- st_transform(oahu_shp, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
 #elevation_cut <- crop(elevation, oahu_nad83)
 #elevation_cut <- mask(elevation_cut, oahu_nad83)
-#elevation_cut <- projectRaster(elevation_cut, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+#elevation_cut <- projectRaster(elevation_cut, crs=project_crs)
 
 #Set a threshold, clip and convert
 #elevation_threshold <- 300
@@ -113,9 +113,6 @@ chosen_island <- "koolau"
 chosen_map <- get(paste(chosen_island, "_shp", sep = ""))
 
 plot(chosen_map)
-#Create an NAD83 shapefile for later
-chosen_map_nad83 <- st_transform(chosen_map, "+proj=aea +lat_0=13 +lon_0=-157 +lat_1=8 +lat_2=18 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs")
-chosen_map_utm4N <- st_transform(chosen_map, "+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
 
 ```
 
@@ -125,7 +122,6 @@ majorislands_shp <- rbind(bigisland_shp, lanai_shp, maui_shp, molokai_shp, kauai
 
 snail_island_shp <- majorislands_shp[st_intersects(majorislands_shp, snail_data_sf, sparse = FALSE), ]
 snail_island_shp <- snail_island_shp[!st_is_empty(snail_island_shp), ]
-snail_island_shp_utm4N <- st_transform(snail_island_shp, "+proj=utm +zone=4 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs +type=crs")
 ```
 
 
@@ -363,7 +359,7 @@ dev.off()
 if (!file.exists(paste("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.Rdata", sep=""))){
   elevation <- raster("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.tif")
   #this takes a while to run
-  elevation <- projectRaster(elevation, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  elevation <- projectRaster(elevation, crs=project_crs)
   save(elevation, file = paste("Data/Environmental_data/Elevation/Tif/LH20_Elev_220.Rdata", sep=""))
   
   elevation_cut <- mask(elevation, chosen_map)
@@ -396,7 +392,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.Rdata", sep=""))){
   existing_vegetation_cover <- raster("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.tif")
-  existing_vegetation_cover <- projectRaster(existing_vegetation_cover, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  existing_vegetation_cover <- projectRaster(existing_vegetation_cover, crs=project_crs)
   save(existing_vegetation_cover, file = paste("Data/Environmental_data/Existing Vegetation Cover 2022/Tif/LH22_EVC_220.Rdata", sep=""))
   
   existing_vegetation_cover_cut <- mask(existing_vegetation_cover, chosen_map)
@@ -430,7 +426,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.Rdata", sep=""))){
   existing_vegetation_height <- raster("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.tif")
-  existing_vegetation_height <- projectRaster(existing_vegetation_height, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  existing_vegetation_height <- projectRaster(existing_vegetation_height, crs=project_crs)
   save(existing_vegetation_height, file = paste("Data/Environmental_data/Existing Vegetation Height 2022/Tif/LH22_EVH_220.Rdata", sep=""))
   
   existing_vegetation_height_cut <- crop(existing_vegetation_height, chosen_map)
@@ -465,7 +461,7 @@ dev.off()
 #Existing Vegetation Type 2022
 if (!file.exists(paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.Rdata", sep=""))){
   existing_vegetation_type <- raster("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.tif")
-  existing_vegetation_type <- projectRaster(existing_vegetation_type, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  existing_vegetation_type <- projectRaster(existing_vegetation_type, crs=project_crs)
   save(existing_vegetation_type, file = paste("Data/Environmental_data/Existing Vegetation Type/Tif/LH20_EVT_220.Rdata", sep=""))
   
   existing_vegetation_type_cut <- crop(existing_vegetation_type, chosen_map)
@@ -515,7 +511,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.Rdata", sep=""))){
   forest_canopy_base_height <- raster("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.tif")
-  forest_canopy_base_height <- projectRaster(forest_canopy_base_height, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  forest_canopy_base_height <- projectRaster(forest_canopy_base_height, crs=project_crs)
   save(forest_canopy_base_height, file = paste("Data/Environmental_data/Forest Canopy Base Height 2022/Tif/LH22_CBH_220.Rdata", sep=""))
   
   forest_canopy_base_height_cut <- crop(forest_canopy_base_height, chosen_map)
@@ -549,7 +545,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.Rdata", sep=""))){
   forest_canopy_bulk_density <- raster("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.tif")
-  forest_canopy_bulk_density <- projectRaster(forest_canopy_bulk_density, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  forest_canopy_bulk_density <- projectRaster(forest_canopy_bulk_density, crs=project_crs)
   save(forest_canopy_bulk_density, file = paste("Data/Environmental_data/Forest Canopy Bulk Density 2022/Tif/LH22_CBD_220.Rdata", sep=""))
   
   forest_canopy_bulk_density_cut <- crop(forest_canopy_bulk_density, chosen_map)
@@ -583,7 +579,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.Rdata", sep=""))){
   forest_canopy_cover <- raster("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.tif")
-  forest_canopy_cover <- projectRaster(forest_canopy_cover, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  forest_canopy_cover <- projectRaster(forest_canopy_cover, crs=project_crs)
   save(forest_canopy_cover, file = paste("Data/Environmental_data/Forest Canopy Cover 2022/Tif/LH22_CC_220.Rdata", sep=""))
   
   forest_canopy_cover_cut <- crop(forest_canopy_cover, chosen_map)
@@ -617,7 +613,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.Rdata", sep=""))){
   forest_canopy_height <- raster("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.tif")
-  forest_canopy_height <- projectRaster(forest_canopy_height, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  forest_canopy_height <- projectRaster(forest_canopy_height, crs=project_crs)
   save(forest_canopy_height, file = paste("Data/Environmental_data/Forest Canopy Height 2022/Tif/LH22_CH_220.Rdata", sep=""))
   
   forest_canopy_height_cut <- crop(forest_canopy_height, chosen_map)
@@ -705,7 +701,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.Rdata", sep=""))){
   slope_degrees <- raster("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.tif")
-  slope_degrees <- projectRaster(slope_degrees, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  slope_degrees <- projectRaster(slope_degrees, crs=project_crs)
   save(slope_degrees, file = paste("Data/Environmental_data/Slope Degrees/Tif/LH20_SlpD_220.Rdata", sep=""))
   
   slope_degrees_cut <- crop(slope_degrees, chosen_map)
@@ -739,7 +735,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.Rdata", sep=""))){
   slope_percent_rise <- raster("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.tif")
-  slope_percent_rise <- projectRaster(slope_percent_rise, crs="+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  slope_percent_rise <- projectRaster(slope_percent_rise, crs=project_crs)
   save(slope_percent_rise, file = paste("Data/Environmental_data/Slope Percent Rise/Tif/LH20_SlpP_220.Rdata", sep=""))
   
   slope_percent_rise_cut <- crop(slope_percent_rise, chosen_map)
@@ -793,7 +789,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84.shp", sep=""))){
   soil_fertility_class <- vect("Data/Environmental_data/Soil Fertility Class/FertilityClass_State.shp")
-  soil_fertility_class <- project(soil_fertility_class, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  soil_fertility_class <- project(soil_fertility_class, project_crs)
   writeVector(soil_fertility_class, paste("Data/Environmental_data/Soil Fertility Class/FertilityClass_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
 
   soil_fertility_class_cut <- crop(soil_fertility_class, chosen_map)
@@ -830,7 +826,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84.shp", sep=""))){
   soil_nutrient_holding_capacity <- vect("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State.shp")
-  soil_nutrient_holding_capacity <- project(soil_nutrient_holding_capacity, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  soil_nutrient_holding_capacity <- project(soil_nutrient_holding_capacity, project_crs)
   writeVector(soil_nutrient_holding_capacity, paste("Data/Environmental_data/Soil Nutrient Holding Capacity/CEC_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
 
   soil_nutrient_holding_capacity_cut <- crop(soil_nutrient_holding_capacity, chosen_map)
@@ -898,7 +894,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84.shp", sep=""))){
   soil_organic_matter <- vect("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State.shp")
-  soil_organic_matter <- project(soil_organic_matter, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  soil_organic_matter <- project(soil_organic_matter, project_crs)
   writeVector(soil_organic_matter, paste("Data/Environmental_data/Soil Organic Matter/OrganicMatter_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
   
   soil_organic_matter_cut <- crop(soil_organic_matter, chosen_map)
@@ -939,7 +935,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Soil pH/pH_State_wgs84.shp", sep=""))){
   soil_ph <- vect("Data/Environmental_data/Soil pH/pH_State.shp")
-  soil_ph <- project(soil_ph, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  soil_ph <- project(soil_ph, project_crs)
   writeVector(soil_ph, paste("Data/Environmental_data/Soil pH/pH_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
   
   soil_ph_cut <- crop(soil_ph, chosen_map)
@@ -980,7 +976,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84.shp", sep=""))){
   soil_shrink_and_swell <- vect("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State.shp")
-  soil_shrink_and_swell <- project(soil_shrink_and_swell, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  soil_shrink_and_swell <- project(soil_shrink_and_swell, project_crs)
   writeVector(soil_shrink_and_swell, paste("Data/Environmental_data/Soil Shrink and Swell/ShrinkSwell_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
   
   soil_shrink_and_swell_cut <- crop(soil_shrink_and_swell, chosen_map)
@@ -1018,7 +1014,7 @@ dev.off()
 ```{r}
 if (!file.exists(paste("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84.shp", sep=""))){
   soil_water_permeability <- vect("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State.shp")
-  soil_water_permeability <- project(soil_water_permeability, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  soil_water_permeability <- project(soil_water_permeability, project_crs)
   writeVector(soil_water_permeability, paste("Data/Environmental_data/Soil Water Permeability/WaterPermeability_State_wgs84.shp", sep=""), filetype="ESRI Shapefile")
   
   soil_water_permeability_cut <- crop(soil_water_permeability, chosen_map)
@@ -1060,7 +1056,7 @@ dev.off()
 #BEFORE
 if (!file.exists(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84.shp", sep=""))){
   tnc_before <- vect("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems.shp")
-  tnc_before <- project(tnc_before, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  tnc_before <- project(tnc_before, project_crs)
   writeVector(tnc_before, paste("Data/Environmental_data/TNC Ecosystems Before and Current/Before_Ecosystems_wgs84.shp", sep=""), filetype="ESRI Shapefile")
   
   tnc_before_cut <- crop(tnc_before, chosen_map)
@@ -1098,7 +1094,7 @@ dev.off()
 #CURRENT
 if (!file.exists(paste("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84.shp", sep=""))){
   tnc_current <- vect("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems.shp")
-  tnc_current <- project(tnc_current, "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+  tnc_current <- project(tnc_current, project_crs)
   writeVector(tnc_current, paste("Data/Environmental_data/TNC Ecosystems Before and Current/Current_Ecosystems_wgs84.shp", sep=""), filetype="ESRI Shapefile")
   
   tnc_current_cut <- crop(tnc_current, chosen_map)
